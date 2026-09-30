@@ -1,5 +1,6 @@
 import { chromium } from '@playwright/test';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
@@ -33,5 +34,7 @@ try {
     engine.dispose(); return result;
   });
   console.log(JSON.stringify(result, null, 2));
-  await writeFile(process.argv[2] || 'artifacts/performance.json', JSON.stringify(result, null, 2));
+  const output = process.argv[2] || 'local-artifacts/performance.json';
+  await mkdir(dirname(output), { recursive: true });
+  await writeFile(output, JSON.stringify(result, null, 2));
 } finally { await browser.close(); }

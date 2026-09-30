@@ -1,4 +1,6 @@
 import { chromium } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+await mkdir('local-artifacts', { recursive: true });
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 try {
   const page = await browser.newPage({viewport:{width:1440,height:900}});
@@ -14,7 +16,7 @@ try {
     await page.evaluate(({x,z})=>{
       const e=window.engine;e.camera.position.set(0,1.6,0);e.camera.lookAt(x,3,z);e.environment.update(1,e.camera);e.renderer.render(e.scene,e.camera);
     },{x,z});
-    await page.screenshot({path:`artifacts/valley-${name}.png`});
+    await page.screenshot({path:`local-artifacts/valley-${name}.png`});
   }
   await page.evaluate(()=>window.engine.dispose());
   if(errors.length)throw new Error(errors.join('\n'));

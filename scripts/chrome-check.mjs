@@ -1,5 +1,6 @@
 import {chromium} from '@playwright/test';
-import {writeFile} from 'node:fs/promises';
+import {mkdir,writeFile} from 'node:fs/promises';
+await mkdir('local-artifacts', {recursive:true});
 const browser=await chromium.launch({channel:'chrome',headless:true});
 try {
  const page=await browser.newPage({viewport:{width:1920,height:1080}});
@@ -13,7 +14,7 @@ try {
   await new Promise(r=>setTimeout(r,20000));
   const report=e.performanceReport();e.dispose();return report;
  });
- await writeFile('artifacts/chrome-gameplay-report.json',report);console.log(report);
+ await writeFile('local-artifacts/chrome-gameplay-report.json',report);console.log(report);
  await page.close();
  const ui=await browser.newPage();
  await ui.goto('http://localhost:5173');

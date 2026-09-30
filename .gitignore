@@ -4,14 +4,5 @@ dist/
 test-results/
 playwright-report/
 
-# Local screenshots, diagnostics, and unused birch evaluation files
-artifacts/*.png
-artifacts/chrome-gameplay-report.json
-artifacts/performance.json
-artifacts/birch-source/
-artifacts/birch-candidate/
-artifacts/birch-preview-archived/
-artifacts/blender-index.html
-artifacts/export-birch.py
-artifacts/inspect-birch.py
-artifacts/birch-assessment.json
+# Local screenshots, diagnostics, benchmarks, and asset experiments
+local-artifacts/

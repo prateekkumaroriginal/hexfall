@@ -1,7 +1,7 @@
 import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
-await mkdir('artifacts', { recursive: true });
+await mkdir('local-artifacts', { recursive: true });
 const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
@@ -26,7 +26,7 @@ try {
     creatures.update(sim.enemies, 0.15, 0, 12); renderer.render(scene, camera);
     window.creaturePreview = { scene, renderer, camera, creatures, sim };
   });
-  await page.screenshot({ path: 'artifacts/creatures.png' });
+  await page.screenshot({ path: 'local-artifacts/creatures.png' });
   const stats = await page.evaluate(() => {
     const { renderer, scene } = window.creaturePreview;
     return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, parts: scene.children.filter(o => o.name.startsWith('creature-')).length };
@@ -38,8 +38,8 @@ try {
     creatures.update(sim.enemies, 1, 0, 20); renderer.render(scene, camera);
     return { enemies: sim.enemies.length, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   });
-  await page.screenshot({ path: 'artifacts/creature-crowd.png' });
+  await page.screenshot({ path: 'local-artifacts/creature-crowd.png' });
   assert.deepEqual(errors, []);
   assert.equal(crowd.calls, stats.calls, 'Crowd rendering must keep draw calls bounded');
-  console.log(JSON.stringify({ errors, stats, crowd, screenshot: 'artifacts/creatures.png' }, null, 2));
+  console.log(JSON.stringify({ errors, stats, crowd, screenshot: 'local-artifacts/creatures.png' }, null, 2));
 } finally { await browser.close(); }

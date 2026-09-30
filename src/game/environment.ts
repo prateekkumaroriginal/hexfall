@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { TreeRenderer } from './trees';
 import { OBSTACLES, ARENA_HALF_WIDTH, ARENA_HALF_DEPTH } from './simulation';
 
 const GRASS_PER_TILE = 700;
@@ -10,7 +10,7 @@ function randomSource(seed: number) {
   };
 }
 
-function paintTexture(kind: 'grass' | 'leaves' | 'ground' | 'rock', random: () => number) {
+function paintTexture(kind: 'grass' | 'ground' | 'rock', random: () => number) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
@@ -56,27 +56,6 @@ function paintTexture(kind: 'grass' | 'leaves' | 'ground' | 'rock', random: () =
       ctx.quadraticCurveTo(x + 5, 165, x + 3, 256);
       ctx.fill();
     }
-  } else {
-    // A branching spray with open gaps, not a circular cutout.
-    for (let branch = 0; branch < 9; branch++) {
-      const y = 225 - branch * 22,
-        side = branch % 2 ? 1 : -1;
-      ctx.strokeStyle = '#6d6841';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(128, 250);
-      ctx.lineTo(128 + side * 75, y - 30);
-      ctx.stroke();
-      for (let j = 0; j < 18; j++) {
-        const t = j / 18,
-          x = 128 + side * t * 78 + (random() - 0.5) * 25,
-          ly = 250 + (y - 280) * t + (random() - 0.5) * 22;
-        ctx.fillStyle = `hsl(${78 + random() * 25},${22 + random() * 15}%,${30 + random() * 22}%)`;
-        ctx.beginPath();
-        ctx.ellipse(x, ly, 5 + random() * 5, 2 + random() * 2, side * 0.6 + random(), 0, 6.28);
-        ctx.fill();
-      }
-    }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -92,9 +71,7 @@ export class Environment {
   private grassRadius = 25;
   private frustum = new THREE.Frustum();
   private projection = new THREE.Matrix4();
-  private treeData: { matrix: THREE.Matrix4; bounds: THREE.Sphere }[] = [];
-  private trunks: THREE.InstancedMesh;
-  private canopy: THREE.InstancedMesh;
+  private trees: TreeRenderer;
   private textures: THREE.Texture[] = [];
   private sky: THREE.Mesh;
   private skyTarget?: THREE.WebGLCubeRenderTarget;
@@ -164,9 +141,8 @@ export class Environment {
 
     const groundMap = paintTexture('ground', random),
       grassMap = paintTexture('grass', random),
-      leafMap = paintTexture('leaves', random),
       rockMap = paintTexture('rock', random);
-    this.textures.push(groundMap, grassMap, leafMap, rockMap);
+    this.textures.push(groundMap, grassMap, rockMap);
     groundMap.repeat.set(20, 24);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(40, 48, 1, 1).rotateX(-Math.PI / 2),
@@ -243,72 +219,7 @@ export class Environment {
         this.grassTiles.push({ mesh, x: cx, z: cz });
       }
 
-    const branches: THREE.BufferGeometry[] = [],
-      foliage: THREE.BufferGeometry[] = [];
-    branches.push(new THREE.CylinderGeometry(0.12, 0.32, 4.8, 7, 1).translate(0, 2.4, 0));
-    for (let j = 0; j < 10; j++) {
-      const a = j * 2.39996,
-        y = 2.3 + j * 0.28,
-        reach = 1.15 + random() * 1.15;
-      const end = new THREE.Vector3(Math.cos(a) * reach, y + 0.85, Math.sin(a) * reach);
-      const path = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, y - 0.7, 0),
-        new THREE.Vector3(end.x * 0.5, y, end.z * 0.5),
-        end,
-      ]);
-      branches.push(new THREE.TubeGeometry(path, 4, 0.09, 5, false));
-      for (let plane = 0; plane < 12; plane++) {
-        const card = new THREE.PlaneGeometry(1.25, 1.55);
-        card.rotateY(a + plane * 2.399);
-        card.rotateX((random() - 0.5) * 1.5);
-        card.translate(
-          end.x + (random() - 0.5) * 2,
-          end.y + random() * 1.2,
-          end.z + (random() - 0.5) * 2,
-        );
-        foliage.push(card);
-      }
-    }
-    const branchGeo = mergeGeometries(branches)!,
-      leafGeo = mergeGeometries(foliage)!;
-    for (const g of [...branches, ...foliage]) g.dispose();
-    this.trunks = new THREE.InstancedMesh(
-      branchGeo,
-      new THREE.MeshLambertMaterial({ color: '#54483b' }),
-      20,
-    );
-    this.canopy = new THREE.InstancedMesh(
-      leafGeo,
-      new THREE.MeshLambertMaterial({
-        map: leafMap,
-        alphaTest: 0.45,
-        side: THREE.DoubleSide,
-        color: '#c6d4ad',
-      }),
-      20,
-    );
-    this.trunks.name = 'branching-tree-trunks';
-    this.canopy.name = 'broadleaf-canopies';
-    for (let i = 0; i < 20; i++) {
-      const side = i % 4,
-        along = (Math.floor(i / 4) - 2) / 2;
-      const x = side < 2 ? (side === 0 ? -1 : 1) * 16.4 : along * 14;
-      const z = side >= 2 ? (side === 2 ? -1 : 1) * 20.4 : along * 17;
-      dummy.position.set(x, 0, z);
-      dummy.rotation.set(0, random() * 6.28, 0);
-      dummy.scale.setScalar(0.8 + random() * 0.5);
-      dummy.updateMatrix();
-      this.treeData.push({
-        matrix: dummy.matrix.clone(),
-        bounds: new THREE.Sphere(new THREE.Vector3(x, 3.5, z), 5.5),
-      });
-    }
-    for (const mesh of [this.trunks, this.canopy]) {
-      mesh.count = 0;
-      mesh.frustumCulled = false;
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      scene.add(mesh);
-    }
+    this.trees = new TreeRenderer(scene);
 
     const rockGeo = new THREE.IcosahedronGeometry(1, 2);
     const rp = rockGeo.getAttribute('position'),
@@ -478,16 +389,7 @@ export class Environment {
       const density = d < 10 ? 1 : d < 20 ? 0.7 : 0.42;
       tile.mesh.count = Math.floor(GRASS_PER_TILE * this.qualityScale * density);
     }
-    let near = 0,
-      trunks = 0;
-    for (const tree of this.treeData) {
-      if (!this.frustum.intersectsSphere(tree.bounds)) continue;
-      this.trunks.setMatrixAt(trunks++, tree.matrix);
-      this.canopy.setMatrixAt(near++, tree.matrix);
-    }
-    this.trunks.count = trunks;
-    this.canopy.count = near;
-    for (const mesh of [this.trunks, this.canopy]) mesh.instanceMatrix.needsUpdate = true;
+    this.trees.update(time, this.frustum);
   }
   dispose() {
     this.skyTarget?.dispose();

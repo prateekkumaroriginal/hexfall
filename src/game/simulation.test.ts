@@ -5,6 +5,8 @@ import {
   SLIME_SPAWN_DURATION,
   ORC_HEALTH,
   OBSTACLES,
+  TREE_OBSTACLES,
+  WORLD_OBSTACLES,
   MAX_PROJECTILES,
   ARENA_HALF_WIDTH,
   ARENA_HALF_DEPTH,
@@ -215,6 +217,144 @@ describe('combat simulation', () => {
     advance(sim, 0.3);
     expect(sim.enemies[0].hp).toBe(6);
     expect(sim.projectiles.some((p) => p.active)).toBe(false);
+  });
+  it.each([8, 9, 10, 11])(
+    'blocks player movement at tree %i and allows sliding around it',
+    (index) => {
+      const tree = TREE_OBSTACLES[index];
+      const sim = new Simulation();
+      sim.reset();
+      sim.remaining = 1;
+      sim.spawnCooldown = 100;
+      sim.x = tree.x;
+      sim.z = tree.z + (tree.z > 0 ? -3 : 3);
+      const toward = { ...blankInput(), forward: tree.z > 0 ? -1 : 1 };
+      advance(sim, 0.6, toward);
+      expect(Math.hypot(sim.x - tree.x, sim.z - tree.z)).toBeGreaterThanOrEqual(
+        tree.radius + 0.4 - 1e-8,
+      );
+      expect(Math.sign(sim.z - tree.z)).toBe(tree.z > 0 ? -1 : 1);
+      const before = sim.z;
+      advance(sim, 0.4, { ...toward, strafe: tree.x > 0 ? -1 : 1 });
+      expect(Math.abs(sim.x - tree.x)).toBeGreaterThan(tree.radius + 0.4);
+      expect(Math.abs(sim.z - before)).toBeGreaterThan(0.2);
+      expect(Math.abs(sim.x)).toBeLessThanOrEqual(ARENA_HALF_WIDTH - 0.45);
+      expect(Math.abs(sim.z)).toBeLessThanOrEqual(ARENA_HALF_DEPTH - 0.45);
+    },
+  );
+  it('stops a fast spell at a thin trunk before an enemy behind it', () => {
+    const tree = TREE_OBSTACLES[8];
+    const sim = new Simulation();
+    sim.reset();
+    sim.remaining = 1;
+    sim.spawnCooldown = 100;
+    Object.assign(sim.enemies[0], { active: true, kind: 1, hp: 6, x: tree.x - 1.2, z: tree.z });
+    Object.assign(sim.projectiles[0], {
+      active: true,
+      x: tree.x + 3,
+      y: 1.6,
+      z: tree.z,
+      vx: -30,
+      vy: 0,
+      vz: 0,
+      life: 2,
+    });
+    sim.step(0.2, blankInput());
+    expect(sim.projectiles[0].active).toBe(false);
+    expect(sim.projectiles[0].x).toBeCloseTo(tree.x + tree.radius);
+    expect(sim.enemies[0].hp).toBe(6);
+  });
+  it('blocks spells starting inside a trunk and vertical spells entering its top', () => {
+    const tree = TREE_OBSTACLES[10];
+    const sim = new Simulation();
+    sim.reset();
+    sim.remaining = 1;
+    sim.spawnCooldown = 100;
+    Object.assign(sim.projectiles[0], {
+      active: true,
+      x: tree.x,
+      y: 1.6,
+      z: tree.z,
+      vx: 0,
+      vy: 0,
+      vz: 30,
+      life: 2,
+    });
+    Object.assign(sim.projectiles[1], {
+      active: true,
+      x: tree.x,
+      y: tree.height + 1,
+      z: tree.z,
+      vx: 0,
+      vy: -30,
+      vz: 0,
+      life: 2,
+    });
+    sim.step(0.1, blankInput());
+    expect(sim.projectiles[0].active).toBe(false);
+    expect(sim.projectiles[0].z).toBe(tree.z);
+    expect(sim.projectiles[1].active).toBe(false);
+    expect(sim.projectiles[1].y).toBeCloseTo(tree.height);
+  });
+  it.each([0, 1])(
+    'keeps enemy kind %i outside trunks after movement and crowd separation',
+    (kind) => {
+      const tree = TREE_OBSTACLES[10];
+      const sim = new Simulation();
+      sim.reset();
+      sim.remaining = 1;
+      sim.spawnCooldown = 100;
+      sim.x = tree.x + 2;
+      sim.z = tree.z + 2;
+      for (let i = 0; i < 3; i++)
+        Object.assign(sim.enemies[i], {
+          active: true,
+          kind,
+          hp: 6,
+          x: tree.x + i * 0.1,
+          z: tree.z,
+        });
+      for (let i = 0; i < 120; i++) {
+        sim.step(1 / 60, blankInput());
+        for (const enemy of sim.enemies.filter((e) => e.active)) {
+          expect(Math.hypot(enemy.x - tree.x, enemy.z - tree.z)).toBeGreaterThanOrEqual(
+            tree.radius + (kind ? 0.65 : 0.85) - 1e-8,
+          );
+        }
+      }
+    },
+  );
+  it('moves a spawn along the edge when its initial point overlaps a tree', () => {
+    const tree = TREE_OBSTACLES[10];
+    const values = [0.6, (tree.x / (ARENA_HALF_WIDTH - 1.5) + 1) / 2, 0.2];
+    const sim = new Simulation(() => values.shift() ?? 0.2);
+    sim.remaining = 1;
+    sim.spawn();
+    const enemy = sim.enemies[0];
+    expect(enemy.active).toBe(true);
+    expect(enemy.z).toBe(-ARENA_HALF_DEPTH + 0.8);
+    expect(sim.remaining).toBe(0);
+    for (const obstacle of WORLD_OBSTACLES)
+      expect(Math.hypot(enemy.x - obstacle.x, enemy.z - obstacle.z)).toBeGreaterThanOrEqual(
+        obstacle.radius + 0.85,
+      );
+  });
+  it('keeps an enemy between a trunk and the wall clear of both', () => {
+    const tree = TREE_OBSTACLES[9];
+    const sim = new Simulation();
+    sim.reset();
+    sim.remaining = 1;
+    sim.spawnCooldown = 100;
+    const enemy = sim.enemies[0];
+    Object.assign(enemy, { active: true, kind: 0, hp: 3, x: ARENA_HALF_WIDTH - 0.6, z: tree.z });
+    for (let i = 0; i < 60; i++) {
+      sim.step(1 / 60, blankInput());
+      expect(Math.hypot(enemy.x - tree.x, enemy.z - tree.z)).toBeGreaterThanOrEqual(
+        tree.radius + 0.85 - 1e-8,
+      );
+      expect(Math.abs(enemy.x)).toBeLessThanOrEqual(ARENA_HALF_WIDTH - 0.6);
+      expect(Math.abs(enemy.z)).toBeLessThanOrEqual(ARENA_HALF_DEPTH - 0.6);
+    }
   });
   it('hits only the nearest enemy along the crosshair', () => {
     const sim = new Simulation();

@@ -1,6 +1,5 @@
-export const ARENA_HALF_WIDTH = 16;
-export const ARENA_HALF_DEPTH = 20;
-export const WALL_HEIGHT = 10;
+import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH, WALL_HEIGHT, TREE_LAYOUT } from './world';
+export { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH, WALL_HEIGHT } from './world';
 export const MAX_ENEMIES = 48;
 export const MAX_PROJECTILES = 96;
 export const PROJECTILE_SPEED = 30;
@@ -36,6 +35,16 @@ export const OBSTACLES = [
   { x: 10, z: 12, radius: 1.1 },
   { x: -4, z: -15, radius: 0.85 },
   { x: 5, z: 3, radius: 0.9 },
+];
+export const TREE_OBSTACLES = TREE_LAYOUT.map(({ x, z, radius, height }) => ({
+  x,
+  z,
+  radius,
+  height,
+}));
+export const WORLD_OBSTACLES = [
+  ...OBSTACLES.map((p) => ({ ...p, height: 2.1 })),
+  ...TREE_OBSTACLES,
 ];
 export type Phase = 'ready' | 'playing' | 'paused' | 'dead' | 'won';
 export type Input = { forward: number; strafe: number; fire: boolean; yaw: number; pitch: number };
@@ -185,28 +194,38 @@ export class Simulation {
     let closest = range;
     let blocked = false;
     let target: Enemy | undefined;
-    // Boulders occlude the spell. Solve the horizontal ray/cylinder intersection.
+    // Trunks and boulders occlude spells. Intersect both the side and caps of each cylinder.
     const a = rx * rx + rz * rz;
-    if (a > 0.0001)
-      for (const p of OBSTACLES) {
-        const ox = x - p.x,
-          oz = z - p.z;
-        const b = ox * rx + oz * rz,
-          c = ox * ox + oz * oz - p.radius * p.radius;
-        if (c <= 0 && y >= 0 && y <= 2.1) {
-          closest = 0;
-          blocked = true;
-          continue;
-        }
+    for (const p of WORLD_OBSTACLES) {
+      const ox = x - p.x,
+        oz = z - p.z;
+      const c = ox * ox + oz * oz - p.radius * p.radius;
+      if (c <= 0 && y >= 0 && y <= p.height) {
+        closest = 0;
+        blocked = true;
+        continue;
+      }
+      if (a > 0.0001) {
+        const b = ox * rx + oz * rz;
         const discriminant = b * b - a * c;
         if (discriminant >= 0) {
           const t = (-b - Math.sqrt(discriminant)) / a;
-          if (t >= 0 && t <= closest && y + ry * t >= 0 && y + ry * t <= 2.1) {
+          if (t >= 0 && t <= closest && y + ry * t >= 0 && y + ry * t <= p.height) {
             closest = t;
             blocked = true;
           }
         }
       }
+      if (Math.abs(ry) > 0.0001) {
+        for (const cap of [0, p.height]) {
+          const t = (cap - y) / ry;
+          if (t >= 0 && t <= closest && (ox + rx * t) ** 2 + (oz + rz * t) ** 2 <= p.radius ** 2) {
+            closest = t;
+            blocked = true;
+          }
+        }
+      }
+    }
     for (const e of this.enemies) {
       if (!e.active) continue;
       // Ellipsoid hit volumes match the broad orc and low slime silhouettes.
@@ -291,15 +310,36 @@ export class Simulation {
     if (!e) return;
     const side = Math.min(3, Math.floor(this.random() * 4));
     const along = this.random() * 2 - 1;
-    const x =
+    let x =
       side < 2
         ? (side === 0 ? -1 : 1) * (ARENA_HALF_WIDTH - 0.8)
         : along * (ARENA_HALF_WIDTH - 1.5);
-    const z =
+    let z =
       side >= 2
         ? (side === 2 ? -1 : 1) * (ARENA_HALF_DEPTH - 0.8)
         : along * (ARENA_HALF_DEPTH - 1.5);
     const kind = this.wave > 1 && this.random() > 0.6 ? 1 : 0;
+    const radius = kind ? 0.65 : 0.85;
+    const initialAlong = side < 2 ? z : x;
+    // Keep birth puddles and orcs out of trunks, including trees beside the spawn edges.
+    for (
+      let attempt = 0;
+      WORLD_OBSTACLES.some((p) => Math.hypot(x - p.x, z - p.z) < p.radius + radius + 0.05);
+      attempt++
+    ) {
+      if (attempt >= 24) return;
+      const offset = Math.ceil((attempt + 1) / 2) * 1.5 * (attempt % 2 ? -1 : 1);
+      if (side < 2)
+        z = Math.max(
+          -ARENA_HALF_DEPTH + 1.5,
+          Math.min(ARENA_HALF_DEPTH - 1.5, initialAlong + offset),
+        );
+      else
+        x = Math.max(
+          -ARENA_HALF_WIDTH + 1.5,
+          Math.min(ARENA_HALF_WIDTH - 1.5, initialAlong + offset),
+        );
+    }
     Object.assign(e, {
       active: true,
       x,
@@ -341,7 +381,7 @@ export class Simulation {
     this.z += ((-Math.cos(input.yaw) * f - Math.sin(input.yaw) * input.strafe) / len) * speed * dt;
     this.x = Math.max(-ARENA_HALF_WIDTH + 0.45, Math.min(ARENA_HALF_WIDTH - 0.45, this.x));
     this.z = Math.max(-ARENA_HALF_DEPTH + 0.45, Math.min(ARENA_HALF_DEPTH - 0.45, this.z));
-    for (const p of OBSTACLES) {
+    for (const p of WORLD_OBSTACLES) {
       const dx = this.x - p.x,
         dz = this.z - p.z,
         d = Math.hypot(dx, dz),
@@ -398,8 +438,8 @@ export class Simulation {
       }
       let vx = dx / d,
         vz = dz / d;
-      // Steer around boulders instead of walking directly into them.
-      for (const p of OBSTACLES) {
+      // Steer around trunks and boulders.
+      for (const p of WORLD_OBSTACLES) {
         const px = p.x - e.x,
           pz = p.z - e.z,
           pd = Math.hypot(px, pz);
@@ -414,15 +454,6 @@ export class Simulation {
       const speed = e.windup > 0 || d < reach * 0.65 ? 0 : slimeSpeed * (e.kind ? 0.8 : 1);
       e.x += (vx / moveLength) * speed * dt;
       e.z += (vz / moveLength) * speed * dt;
-      for (const p of OBSTACLES) {
-        const ex = e.x - p.x,
-          ez = e.z - p.z,
-          ed = Math.hypot(ex, ez);
-        if (ed < 1.9) {
-          e.x = p.x + (ed ? ex / ed : 1) * 1.9;
-          e.z = p.z + (ed ? ez / ed : 0) * 1.9;
-        }
-      }
     }
     // Bounded pair separation keeps melee crowds from occupying the same point.
     for (let i = 0; i < this.enemies.length; i++) {
@@ -447,6 +478,34 @@ export class Simulation {
     }
     for (const e of this.enemies)
       if (e.active) {
+        for (const p of WORLD_OBSTACLES) {
+          const dx = e.x - p.x,
+            dz = e.z - p.z,
+            d = Math.hypot(dx, dz);
+          const radius = p.radius + (e.kind ? 0.65 : 0.85);
+          if (d < radius) {
+            const inward = Math.hypot(p.x, p.z) || 1;
+            e.x = p.x + (d ? dx / d : -p.x / inward) * radius;
+            e.z = p.z + (d ? dz / d : -p.z / inward) * radius;
+            // Slide to the circle/wall intersection instead of clamping back into the trunk.
+            const limitX = ARENA_HALF_WIDTH - 0.6;
+            const limitZ = ARENA_HALF_DEPTH - 0.6;
+            if (Math.abs(e.x) > limitX) {
+              e.x = Math.sign(e.x) * limitX;
+              e.z =
+                p.z +
+                Math.sign(dz || -p.z || 1) *
+                  Math.sqrt(Math.max(0, radius * radius - (e.x - p.x) ** 2));
+            }
+            if (Math.abs(e.z) > limitZ) {
+              e.z = Math.sign(e.z) * limitZ;
+              e.x =
+                p.x +
+                Math.sign(dx || -p.x || 1) *
+                  Math.sqrt(Math.max(0, radius * radius - (e.z - p.z) ** 2));
+            }
+          }
+        }
         e.x = Math.max(-ARENA_HALF_WIDTH + 0.6, Math.min(ARENA_HALF_WIDTH - 0.6, e.x));
         e.z = Math.max(-ARENA_HALF_DEPTH + 0.6, Math.min(ARENA_HALF_DEPTH - 0.6, e.z));
       }

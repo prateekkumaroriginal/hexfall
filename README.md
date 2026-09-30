@@ -35,6 +35,8 @@ Use `pnpm install --frozen-lockfile` in CI to install the versions recorded in `
 
 ## Architecture and performance
 
+- UI styling uses Tailwind CSS v4 through the Vite plugin. `src/style.css` maps the existing palette to semantic theme tokens, following [shadcn's theming conventions](https://ui.shadcn.com/docs/theming). Shared buttons and panels live in `src/components/ui`; `cn()` merges conditional classes and caller overrides. Tailwind's theme and utilities are imported without Preflight to preserve native controls and browser typography. Custom CSS covers base defaults, layered vignette gradients, and browser-specific scrollbars. Preserve the inclusive 700px and 1000px breakpoints when changing responsive utilities.
+
 - React owns menus, settings, and a HUD sampled at 10 Hz. The game engine is dynamically imported and held in a ref. Simulation positions never enter React state.
 - Combat runs at a fixed 60 Hz with bounded catch-up after a long frame. Input and rendering are separate from the deterministic-step simulation.
 - The enemy pool is capped at 48. Creature geometry is merged by joint and material into 23 instanced batches, plus one shared contact-shadow batch and one pooled batch for slime birth bubbles. Crowd size does not increase creature draw calls. Grass, trees, boulders, spell cores, and trails also use instancing; the surrounding mountain ridge is one mesh. A fixed pool caps wizard projectiles at 96. Swept ray/ellipsoid and boulder tests prevent fast shots from skipping targets.

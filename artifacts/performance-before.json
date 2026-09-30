@@ -1,0 +1,66 @@
+[
+  {
+    "enemies": 0,
+    "variant": "full",
+    "medianRenderMs": 0.5,
+    "triangles": 1175200,
+    "calls": 13,
+    "pixels": 2073600
+  },
+  {
+    "enemies": 0,
+    "variant": "no grass",
+    "medianRenderMs": 0.2,
+    "triangles": 700200,
+    "calls": 12,
+    "pixels": 2073600
+  },
+  {
+    "enemies": 0,
+    "variant": "no trees",
+    "medianRenderMs": 0.2,
+    "triangles": 627424,
+    "calls": 11,
+    "pixels": 2073600
+  },
+  {
+    "enemies": 0,
+    "variant": "no sky",
+    "medianRenderMs": 0.1,
+    "triangles": 1173984,
+    "calls": 12,
+    "pixels": 2073600
+  },
+  {
+    "enemies": 24,
+    "variant": "full",
+    "medianRenderMs": 0.3,
+    "triangles": 1675120,
+    "calls": 37,
+    "pixels": 2073600
+  },
+  {
+    "enemies": 24,
+    "variant": "no grass",
+    "medianRenderMs": 0.3,
+    "triangles": 1200120,
+    "calls": 36,
+    "pixels": 2073600
+  },
+  {
+    "enemies": 24,
+    "variant": "no trees",
+    "medianRenderMs": 0.1,
+    "triangles": 1127344,
+    "calls": 35,
+    "pixels": 2073600
+  },
+  {
+    "enemies": 24,
+    "variant": "no sky",
+    "medianRenderMs": 0.1,
+    "triangles": 1673904,
+    "calls": 36,
+    "pixels": 2073600
+  }
+]

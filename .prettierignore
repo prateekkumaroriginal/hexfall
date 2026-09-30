@@ -1,0 +1,6 @@
+node_modules/
+dist/
+local-artifacts/
+.agents/
+pnpm-lock.yaml
+skills-lock.json

@@ -54,44 +54,116 @@
     font-weight: 400;
     color-scheme: dark;
   }
-  * { box-sizing: border-box; }
-  html, body, #root { width: 100%; height: 100%; overflow: hidden; }
-  body { margin: 0; }
-  button, a, input, select { -webkit-tap-highlight-color: transparent; }
-  button, a { touch-action: manipulation; }
-  button { font: inherit; cursor: pointer; color: inherit; }
-  button:disabled { cursor: wait; opacity: .5; }
-  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  * {
+    box-sizing: border-box;
+  }
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    margin: 0;
+  }
+  button,
+  a,
+  input,
+  select {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  a {
+    touch-action: manipulation;
+  }
+  button {
+    font: inherit;
+    cursor: pointer;
+    color: inherit;
+  }
+  button:disabled {
+    cursor: wait;
+    opacity: 0.5;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 5px;
   }
-  a { color: inherit; text-decoration: none; }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
   @media (prefers-reduced-motion: reduce) {
-    * { transition: none !important; scroll-behavior: auto !important; }
+    * {
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
 @layer components {
   /* Layered scene effects stay in CSS so their gradient stops remain readable. */
   .vignette {
-    background: linear-gradient(90deg, rgba(13,22,17,.96) 0%, rgba(13,22,17,.87) 28%, rgba(13,22,17,.32) 61%, rgba(13,22,17,.06)), linear-gradient(0deg, rgba(10,18,13,.9), transparent 30%, transparent 75%, rgba(10,18,13,.55));
-    transition: background .3s;
+    background:
+      linear-gradient(
+        90deg,
+        rgba(13, 22, 17, 0.96) 0%,
+        rgba(13, 22, 17, 0.87) 28%,
+        rgba(13, 22, 17, 0.32) 61%,
+        rgba(13, 22, 17, 0.06)
+      ),
+      linear-gradient(
+        0deg,
+        rgba(10, 18, 13, 0.9),
+        transparent 30%,
+        transparent 75%,
+        rgba(10, 18, 13, 0.55)
+      );
+    transition: background 0.3s;
   }
   @media (max-width: 700px) {
-    .vignette { background: linear-gradient(90deg, #0d1611ed, #0d161175), linear-gradient(0deg, #0d1611, transparent); }
+    .vignette {
+      background:
+        linear-gradient(90deg, #0d1611ed, #0d161175), linear-gradient(0deg, #0d1611, transparent);
+    }
   }
   .vignette[data-playing='true'] {
-    background: radial-gradient(ellipse, transparent 45%, #0a160e60), linear-gradient(0deg, #0b180caa, transparent 25%, transparent 85%, #0b180c80);
+    background:
+      radial-gradient(ellipse, transparent 45%, #0a160e60),
+      linear-gradient(0deg, #0b180caa, transparent 25%, transparent 85%, #0b180c80);
   }
 
   /* Standard scrollbar properties for Firefox, detailed pseudo-elements for Chromium. */
-  .status-scrollbar { scrollbar-width: thin; scrollbar-color: #a5b58d #102019; }
-  .status-scrollbar::-webkit-scrollbar { width: 8px; }
-  .status-scrollbar::-webkit-scrollbar-track { background: #102019; border-radius: 8px; }
-  .status-scrollbar::-webkit-scrollbar-thumb { background: #a5b58d; border: 2px solid #102019; border-radius: 8px; }
-  .status-scrollbar::-webkit-scrollbar-thumb:hover { background: #d9e2c4; }
-  .status-scrollbar::-webkit-scrollbar-corner { background: transparent; }
+  .status-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #a5b58d #102019;
+  }
+  .status-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+  .status-scrollbar::-webkit-scrollbar-track {
+    background: #102019;
+    border-radius: 8px;
+  }
+  .status-scrollbar::-webkit-scrollbar-thumb {
+    background: #a5b58d;
+    border: 2px solid #102019;
+    border-radius: 8px;
+  }
+  .status-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #d9e2c4;
+  }
+  .status-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
+  }
   @supports selector(::-webkit-scrollbar) {
-    .status-scrollbar { scrollbar-width: auto; scrollbar-color: auto; }
+    .status-scrollbar {
+      scrollbar-width: auto;
+      scrollbar-color: auto;
+    }
   }
 }

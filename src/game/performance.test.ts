@@ -12,14 +12,14 @@ describe('render budgets', () => {
   it('reacts to actual 10 FPS frame intervals without going below its floor', () => {
     const adaptive = new AdaptiveResolution();
     for (let i = 0; i < 10; i++) adaptive.sample(100);
-    expect(adaptive.scale).toBe(.65);
+    expect(adaptive.scale).toBe(0.65);
     for (let i = 0; i < 100; i++) adaptive.sample(100);
-    expect(adaptive.scale).toBe(.5);
+    expect(adaptive.scale).toBe(0.5);
   });
   it('recovers slowly after sustained good frames', () => {
     const adaptive = new AdaptiveResolution();
     for (let i = 0; i < 10; i++) adaptive.sample(100);
     for (let i = 0; i < 252; i++) adaptive.sample(16);
-    expect(adaptive.scale).toBeCloseTo(.7);
+    expect(adaptive.scale).toBeCloseTo(0.7);
   });
 });

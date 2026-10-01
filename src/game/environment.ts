@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TreeRenderer } from './trees';
-import { OBSTACLES, ARENA_HALF_WIDTH, ARENA_HALF_DEPTH } from './simulation';
+import { OBSTACLES } from './simulation';
+import { buildMountains } from './mountains';
 
 const GRASS_PER_TILE = 700;
 function randomSource(seed: number) {
@@ -273,73 +274,7 @@ export class Environment {
     rocks.computeBoundingSphere();
     scene.add(rocks);
 
-    // Continuous rectangular ridge. Every perimeter sample starts at the same collision boundary.
-    const wallPositions: number[] = [],
-      wallUv: number[] = [],
-      wallColors: number[] = [],
-      wallIndices: number[] = [];
-    const segments = 128,
-      rows = 8;
-    for (let row = 0; row <= rows; row++)
-      for (let i = 0; i <= segments; i++) {
-        const t = row / rows,
-          along = (i / segments) * 4,
-          side = Math.min(3, Math.floor(along)),
-          u = along - side;
-        const baseX =
-          side === 0
-            ? -ARENA_HALF_WIDTH + u * ARENA_HALF_WIDTH * 2
-            : side === 1
-              ? ARENA_HALF_WIDTH
-              : side === 2
-                ? ARENA_HALF_WIDTH - u * ARENA_HALF_WIDTH * 2
-                : -ARENA_HALF_WIDTH;
-        const baseZ =
-          side === 0
-            ? -ARENA_HALF_DEPTH
-            : side === 1
-              ? -ARENA_HALF_DEPTH + u * ARENA_HALF_DEPTH * 2
-              : side === 2
-                ? ARENA_HALF_DEPTH
-                : ARENA_HALF_DEPTH - u * ARENA_HALF_DEPTH * 2;
-        const phase = (i / segments) * Math.PI * 2,
-          peak = 18 + Math.sin(phase * 5 + 0.4) * 4 + Math.cos(phase * 9) * 2.5;
-        const outward =
-          0.65 +
-          t * 10 +
-          (Math.sin(phase * 19 + t * 8) * 0.7 + Math.sin(phase * 31) * 0.25) *
-            Math.sin(t * Math.PI);
-        const nx = baseX / ARENA_HALF_WIDTH,
-          nz = baseZ / ARENA_HALF_DEPTH,
-          n = Math.hypot(nx, nz);
-        const y =
-          row === 0
-            ? -0.1
-            : Math.pow(t, 0.74) * peak +
-              Math.sin(phase * 23 + t * 15) * 0.55 * Math.sin(t * Math.PI);
-        wallPositions.push(baseX + (nx / n) * outward, y, baseZ + (nz / n) * outward);
-        wallUv.push((i / segments) * 18, t * 4);
-        const snow = y > 19.5 + Math.sin(phase * 13) * 1.2;
-        color.set(snow ? '#b8c6bf' : row < 2 ? '#697455' : row < 4 ? '#797e6d' : '#8a9190');
-        color.multiplyScalar(0.84 + 0.16 * Math.sin(phase * 11 + t * 4));
-        wallColors.push(color.r, color.g, color.b);
-        if (row < rows && i < segments) {
-          const k = row * (segments + 1) + i;
-          wallIndices.push(k, k + segments + 1, k + 1, k + 1, k + segments + 1, k + segments + 2);
-        }
-      }
-    const wallGeo = new THREE.BufferGeometry();
-    wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallPositions, 3));
-    wallGeo.setAttribute('uv', new THREE.Float32BufferAttribute(wallUv, 2));
-    wallGeo.setAttribute('color', new THREE.Float32BufferAttribute(wallColors, 3));
-    wallGeo.setIndex(wallIndices);
-    wallGeo.computeVertexNormals();
-    const walls = new THREE.Mesh(
-      wallGeo,
-      new THREE.MeshLambertMaterial({ map: rockMap, vertexColors: true, side: THREE.DoubleSide }),
-    );
-    walls.name = 'enclosing-mountain-walls';
-    scene.add(walls);
+    buildMountains(scene);
   }
 
   bakeSky(renderer: THREE.WebGLRenderer) {

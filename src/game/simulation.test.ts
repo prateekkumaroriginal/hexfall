@@ -76,6 +76,32 @@ describe('combat simulation', () => {
     expect(orc.enemies[0].hp).toBe(ORC_HEALTH);
     expect(orc.enemies[0].hp).toBe(slime.enemies[0].hp * 2);
   });
+  it('kills a spawned slime with two spell hits', () => {
+    const sim = new Simulation(() => 0.2);
+    sim.reset();
+    sim.remaining = 1;
+    sim.spawn();
+    sim.spawnCooldown = 100;
+    const slime = sim.enemies[0];
+    Object.assign(slime, { x: 0, z: 3, spawnRemaining: 0, cooldown: 100 });
+    expect(slime.hp).toBe(2);
+    for (let hit = 1; hit <= 2; hit++) {
+      Object.assign(sim.projectiles[0], {
+        active: true,
+        x: 0,
+        y: 0.8,
+        z: 4.5,
+        vx: 0,
+        vy: 0,
+        vz: -30,
+        life: 2,
+      });
+      advance(sim, 0.05);
+      expect(slime.hp).toBe(2 - hit);
+      expect(slime.active).toBe(hit < 2);
+    }
+    expect(sim.kills).toBe(1);
+  });
   it.each([1, 2, 3, 4, 5])(
     'slows slimes by 22.5%% and keeps orcs 20%% slower in wave %i',
     (wave) => {

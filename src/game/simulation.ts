@@ -13,9 +13,9 @@ export type Projectile = {
   vz: number;
   life: number;
 };
-export const SLIME_HEALTH = 3;
+export const SLIME_HEALTH = 2;
 export const SLIME_SPEED = 1.04625;
-export const SLIME_SPAWN_DURATION = 1.4;
+export const SLIME_SPAWN_DURATION = 2.5;
 export const ORC_HEALTH = SLIME_HEALTH * 2;
 // A puddle spreads first, then rises into the full creature. Shared by rendering and hit detection.
 export function slimeSpawnScale(remaining: number, vertical = false) {

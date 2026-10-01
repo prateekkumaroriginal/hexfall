@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Engine, Settings } from './game/engine';
+import type { Engine } from './game/engine';
+import type { Settings } from './settings';
+import {
+  DEFAULT_SETTINGS,
+  parseSettings,
+  RENDER_SCALE_SETTINGS,
+  SETTINGS_STORAGE_KEY,
+} from './settings';
 import { StatusCheck } from './StatusCheck';
 import type { Snapshot } from './game/simulation';
 import { Button } from './components/ui/button';
@@ -19,20 +26,11 @@ const initial: Snapshot = {
   hurt: 0,
   waveWait: 0,
 };
-const defaultSettings: Settings = { quality: 'balanced', sensitivity: 1, sound: true };
 function loadSettings(): Settings {
   try {
-    const s = JSON.parse(localStorage.getItem('hexfall.settings.v1') || 'null');
-    return s &&
-      ['low', 'balanced', 'high'].includes(s.quality) &&
-      typeof s.sensitivity === 'number' &&
-      s.sensitivity >= 0.3 &&
-      s.sensitivity <= 2.5 &&
-      typeof s.sound === 'boolean'
-      ? s
-      : defaultSettings;
+    return parseSettings(localStorage.getItem(SETTINGS_STORAGE_KEY));
   } catch {
-    return defaultSettings;
+    return DEFAULT_SETTINGS;
   }
 }
 const formatTime = (n: number) =>
@@ -120,7 +118,7 @@ export default function App() {
   useEffect(() => {
     engine.current?.updateSettings(settings);
     try {
-      localStorage.setItem('hexfall.settings.v1', JSON.stringify(settings));
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
     } catch {
       /* Private browsers may disable storage. */
     }
@@ -343,6 +341,28 @@ export default function App() {
                       </Button>
                     ))}
                   </div>
+                </fieldset>
+                <fieldset
+                  className="mx-0 my-[22px] border-0 p-0"
+                  aria-describedby="render-scale-description"
+                >
+                  <legend className="mb-3 p-0 text-[13px]">
+                    {RENDER_SCALE_SETTINGS.labels.name}
+                  </legend>
+                  <div className="flex gap-2">
+                    {RENDER_SCALE_SETTINGS.options.map(({ value, label }) => (
+                      <Button
+                        variant="quality"
+                        key={value}
+                        type="button"
+                        aria-pressed={settings.renderScale === value}
+                        onClick={() => setSettings((s) => ({ ...s, renderScale: value }))}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                  <p id="render-scale-description">{RENDER_SCALE_SETTINGS.labels.description}</p>
                 </fieldset>
                 <label className="mt-[22px] block text-[13px]">
                   Mouse sensitivity{' '}

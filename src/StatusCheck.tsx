@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Engine } from './game/engine';
 import { Button } from './components/ui/button';
 import { cn } from './lib/utils';
+import { RENDER_SCALE_SETTINGS } from './settings';
 
 export function StatusCheck({ engine }: { engine: Engine | null }) {
   const [status, setStatus] = useState(() => engine?.statusCheck());
@@ -61,7 +62,7 @@ export function StatusCheck({ engine }: { engine: Engine | null }) {
           </dd>
         </div>
         <div>
-          <dt>Automatic resolution scale</dt>
+          <dt>{RENDER_SCALE_SETTINGS.labels.name}</dt>
           <dd>{Math.round(status.scale * 100)}%</dd>
         </div>
         <div>
@@ -80,7 +81,6 @@ export function StatusCheck({ engine }: { engine: Engine | null }) {
         ) : null}
       </dl>
       <p className="wrap-anywhere text-[11px]!">{status.renderer}</p>
-      {status.scale < 1 ? <p>Resolution was reduced after slow frames.</p> : null}
       {status.gameplay.fps !== null ? (
         <p>Gameplay readings cover the last {status.gameplay.sampledSeconds} seconds played.</p>
       ) : null}

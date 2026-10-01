@@ -4,14 +4,10 @@ import type { Snapshot } from './simulation';
 import { CreatureRenderer } from './creatures';
 import { Environment } from './environment';
 import { buildStaff } from './staff';
-import { AdaptiveResolution, renderPixelRatio } from './performance';
+import { renderPixelRatio } from './performance';
 import { FrameDiagnostics } from './diagnostics';
+import type { Settings } from '../settings';
 
-export type Settings = {
-  quality: 'low' | 'balanced' | 'high';
-  sensitivity: number;
-  sound: boolean;
-};
 export class Engine {
   readonly sim = new Simulation();
   readonly input = blankInput();
@@ -39,7 +35,6 @@ export class Engine {
   private audio?: AudioContext;
   private lastShot = 0;
   private settings: Settings;
-  private adaptive = new AdaptiveResolution();
   private disposed = false;
   private fpsFrames = 0;
   private fpsTime = 0;
@@ -127,7 +122,7 @@ export class Engine {
   }
   updateSettings(settings: Settings) {
     this.settings = settings;
-    this.environment.setQuality(this.adaptive.scale < 0.8 ? 'low' : settings.quality);
+    this.environment.setQuality(settings.quality);
     this.resize();
   }
   statusCheck() {
@@ -145,10 +140,10 @@ export class Engine {
           : 'unknown',
       contextLost: gl.isContextLost(),
       quality: this.settings.quality,
-      scale: this.adaptive.scale,
+      scale: this.settings.renderScale,
       width: this.renderer.domElement.width,
       height: this.renderer.domElement.height,
-      grassQuality: this.adaptive.scale < 0.8 ? 'low' : this.settings.quality,
+      grassQuality: this.settings.quality,
       gameplay: this.diagnostics.summary(),
     };
   }
@@ -163,6 +158,7 @@ export class Engine {
           ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)
           : gl.getParameter(gl.RENDERER),
         quality: this.settings.quality,
+        renderScale: this.settings.renderScale,
         devicePixelRatio,
         viewport: [this.host.clientWidth, this.host.clientHeight],
         gameplay: { ...this.diagnostics.summary(), ...this.lastGameplayRender },
@@ -175,7 +171,7 @@ export class Engine {
     const w = this.host.clientWidth,
       h = this.host.clientHeight;
     this.renderer.setPixelRatio(
-      renderPixelRatio(w, h, devicePixelRatio, this.settings.quality, this.adaptive.scale),
+      renderPixelRatio(w, h, devicePixelRatio, this.settings.quality, this.settings.renderScale),
     );
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
@@ -197,7 +193,6 @@ export class Engine {
       }
       this.sim.phase = 'playing';
       this.accumulator = 0;
-      this.adaptive.clearWindow();
       this.last = 0;
       if (this.settings.sound) {
         this.audio ??= new AudioContext();
@@ -301,10 +296,6 @@ export class Engine {
     const frameStart = performance.now(),
       wasPlaying = this.sim.phase === 'playing';
     if (this.sim.phase === 'playing') {
-      if (elapsed > 0 && this.adaptive.sample(elapsed * 1000)) {
-        this.environment.setQuality(this.adaptive.scale < 0.8 ? 'low' : this.settings.quality);
-        this.resize();
-      }
       this.input.forward =
         Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) -
         Number(this.keys.has('KeyS') || this.keys.has('ArrowDown'));
@@ -361,7 +352,7 @@ export class Engine {
       const render = this.lastGameplayRender;
       render.width = this.renderer.domElement.width;
       render.height = this.renderer.domElement.height;
-      render.scale = this.adaptive.scale;
+      render.scale = this.settings.renderScale;
       render.calls = this.renderer.info.render.calls;
       render.triangles = this.renderer.info.render.triangles;
       render.enemies = this.sim.alive;

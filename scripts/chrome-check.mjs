@@ -17,7 +17,7 @@ try {
       document.querySelector('#host'),
       () => {},
       () => {},
-      { quality: 'balanced', sensitivity: 1, sound: false },
+      { quality: 'balanced', renderScale: 1, sensitivity: 1, sound: false },
     );
     e.sim.reset();
     e.sim.phase = 'playing';

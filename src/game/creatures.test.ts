@@ -3,7 +3,123 @@ import { describe, expect, it } from 'vitest';
 import { CreatureRenderer } from './creatures';
 import { Simulation, SLIME_SPAWN_DURATION } from './simulation';
 
+describe('creature rendering budgets', () => {
+  it('keeps polished models within the triangle budget and shares batches across a full crowd', () => {
+    const scene = new THREE.Scene();
+    const renderer = new CreatureRenderer(scene);
+    const sim = new Simulation();
+    const parts = scene.children.filter((object) =>
+      object.name.startsWith('creature-'),
+    ) as THREE.InstancedMesh[];
+    const triangles = (slime: boolean) =>
+      parts
+        .filter((p) => p.name.includes('slime:') === slime)
+        .reduce((sum, p) => sum + p.geometry.index!.count / 3, 0);
+    expect(triangles(true)).toBeLessThanOrEqual(6500);
+    expect(triangles(false)).toBeLessThanOrEqual(24000);
+    expect(parts.length).toBeLessThanOrEqual(23);
+    const paintedMaterials = new Set(
+      parts.map((part) => part.material as THREE.MeshStandardMaterial).filter((m) => m.map),
+    );
+    expect(paintedMaterials.size).toBe(4);
+    const maps = new Set([...paintedMaterials].map((m) => m.map!));
+    expect(maps.size).toBe(4);
+    const slimeMaterial = scene.getObjectByName('creature-slime:gel') as THREE.InstancedMesh;
+    const gel = slimeMaterial.material as THREE.MeshPhysicalMaterial;
+    expect(gel.transparent).toBe(false);
+    expect(gel.transmission).toBe(0);
+    expect(gel.map!.image.width).toBe(512);
+    let released = 0;
+    maps.forEach((map) => map.addEventListener('dispose', () => released++));
+    for (const part of parts) {
+      expect(part.geometry.index).not.toBeNull();
+      for (const name of ['position', 'normal', 'color'])
+        expect(Array.from(part.geometry.getAttribute(name).array).every(Number.isFinite)).toBe(
+          true,
+        );
+    }
+    Object.assign(sim.enemies[0], { active: true, kind: 0, spawnRemaining: 0 });
+    Object.assign(sim.enemies[1], { active: true, kind: 1 });
+    renderer.update(sim.enemies, 0, 0, 9);
+    const geometries = parts.map((p) => p.geometry);
+    sim.enemies.forEach((enemy, i) =>
+      Object.assign(enemy, {
+        active: true,
+        kind: i % 2,
+        spawnRemaining: 0,
+        x: i % 8,
+        z: -Math.floor(i / 8) * 3,
+      }),
+    );
+    renderer.update(sim.enemies, 1, 0, 9);
+    expect(scene.children.filter((object) => object.name.startsWith('creature-'))).toEqual(parts);
+    parts.forEach((part, i) => {
+      expect(part.geometry).toBe(geometries[i]);
+      expect(part.count).toBe(24);
+    });
+    expect(
+      new Set(
+        parts.map((part) => (part.material as THREE.MeshStandardMaterial).map).filter(Boolean),
+      ),
+    ).toEqual(maps);
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 50);
+    camera.position.set(0, 1.6, 9);
+    camera.lookAt(0, 1.6, 20);
+    renderer.update(sim.enemies, 1, 0, 9, camera);
+    expect(parts.every((part) => part.count === 0)).toBe(true);
+    scene.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.geometry.dispose();
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach((material) => {
+          if (paintedMaterials.has(material as THREE.MeshStandardMaterial)) return;
+          material.dispose();
+        });
+        if (object instanceof THREE.InstancedMesh) object.dispose();
+      }
+    });
+    paintedMaterials.forEach((material) => material.dispose());
+    expect(released).toBe(4);
+  });
+});
+
 describe('slime birth rendering', () => {
+  it('keeps birth bubble pulses at their original speed throughout the longer birth', () => {
+    const scene = new THREE.Scene(),
+      renderer = new CreatureRenderer(scene),
+      sim = new Simulation(() => 0.2);
+    sim.remaining = 1;
+    sim.spawn();
+    const e = sim.enemies[0],
+      matrix = new THREE.Matrix4();
+    const bubbles = scene.getObjectByName('slime-spawn-bubbles') as THREE.InstancedMesh;
+    for (const elapsed of [0.56, 1.12, 1.68, 2.24]) {
+      e.spawnRemaining = SLIME_SPAWN_DURATION - elapsed;
+      renderer.update(sim.enemies, elapsed, 0, 9);
+      expect(bubbles.count).toBe(5);
+      bubbles.getMatrixAt(0, matrix);
+      // The first bubble returns to the ground every 0.56 seconds, even after 1.4 seconds.
+      expect(matrix.elements[13]).toBeCloseTo(0.08, 5);
+      e.spawnRemaining -= 0.28;
+      if (e.spawnRemaining > 0) {
+        renderer.update(sim.enemies, elapsed + 0.28, 0, 9);
+        bubbles.getMatrixAt(0, matrix);
+        expect(matrix.elements[13]).toBeGreaterThan(0.55);
+      }
+    }
+    e.spawnRemaining = 0;
+    renderer.update(sim.enemies, 2.5, 0, 9);
+    expect(bubbles.count).toBe(0);
+    scene.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.geometry.dispose();
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        for (const material of materials) material.dispose();
+        if (object instanceof THREE.InstancedMesh) object.dispose();
+      }
+    });
+  });
+
   it('spreads a low puddle, raises the body, and removes bubbles when formation ends', () => {
     const scene = new THREE.Scene(),
       renderer = new CreatureRenderer(scene),

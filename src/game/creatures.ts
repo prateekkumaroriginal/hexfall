@@ -5,6 +5,7 @@ import type { Enemy } from './simulation';
 import { buildCreatureGeometries } from './creature-models';
 import type { CreatureBone, CreatureSurface } from './creature-models';
 import { slimePaint, surfacePaint } from './creature-paint';
+import { ORC_JOINT_PIVOTS } from './creature-blender';
 
 type Bone = CreatureBone;
 type Surface = CreatureSurface;
@@ -86,8 +87,8 @@ export class CreatureRenderer {
       }),
       iron: new THREE.MeshStandardMaterial({
         vertexColors: true,
-        metalness: 0.42,
-        roughness: 0.49,
+        metalness: 0.32,
+        roughness: 0.58,
         map: surfacePaint('iron'),
       }),
       leather: new THREE.MeshStandardMaterial({
@@ -180,7 +181,6 @@ export class CreatureRenderer {
       this.root.rotation.set(0, angle, 0);
       this.root.scale.set(1, 1, 1);
       if (e.kind) {
-        this.root.scale.x = 0.92;
         this.root.position.y = Math.abs(Math.sin(stride)) * 0.035;
         this.root.rotation.z = Math.sin(stride) * 0.015;
         this.root.updateMatrix();
@@ -191,13 +191,15 @@ export class CreatureRenderer {
           const swing = attacking ? 0 : Math.sin(stride) * side * 0.42;
           const attack =
             attacking && side > 0 ? -1.7 * Math.sin((1 - e.windup / 0.55) * Math.PI) : 0;
-          this.joint.position.set(side * 0.66, 2.04, 0);
-          this.joint.rotation.set(-swing * 0.7 + attack, side < 0 ? -0.09 : 0.06, side * 0.045);
+          const armPivot = ORC_JOINT_PIVOTS[arm];
+          this.joint.position.set(armPivot[0], armPivot[1], armPivot[2]);
+          this.joint.rotation.set(-swing * 0.7 + attack, 0, 0);
           this.joint.scale.set(1, 1, 1);
           this.joint.updateMatrix();
           this.transforms[arm].multiplyMatrices(this.root.matrix, this.joint.matrix);
-          this.joint.position.set(side * 0.33, 1.18, 0);
-          this.joint.rotation.set(swing, side * 0.19, 0);
+          const legPivot = ORC_JOINT_PIVOTS[leg];
+          this.joint.position.set(legPivot[0], legPivot[1], legPivot[2]);
+          this.joint.rotation.set(swing, 0, 0);
           this.joint.updateMatrix();
           this.transforms[leg].multiplyMatrices(this.root.matrix, this.joint.matrix);
         }

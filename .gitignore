@@ -6,3 +6,7 @@ playwright-report/
 
 # Local screenshots, diagnostics, benchmarks, and asset experiments
 local-artifacts/
+
+# Blender keeps the editable source here; numbered save backups are local.
+*.blend1
+*.blend2

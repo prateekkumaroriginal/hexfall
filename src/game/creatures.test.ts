@@ -15,8 +15,8 @@ describe('creature rendering budgets', () => {
       parts
         .filter((p) => p.name.includes('slime:') === slime)
         .reduce((sum, p) => sum + p.geometry.index!.count / 3, 0);
-    expect(triangles(true)).toBeLessThanOrEqual(6500);
-    expect(triangles(false)).toBeLessThanOrEqual(24000);
+    expect(triangles(true)).toBeLessThanOrEqual(14000);
+    expect(triangles(false)).toBeLessThanOrEqual(40000);
     expect(parts.length).toBeLessThanOrEqual(23);
     const paintedMaterials = new Set(
       parts.map((part) => part.material as THREE.MeshStandardMaterial).filter((m) => m.map),
@@ -33,10 +33,16 @@ describe('creature rendering budgets', () => {
     maps.forEach((map) => map.addEventListener('dispose', () => released++));
     for (const part of parts) {
       expect(part.geometry.index).not.toBeNull();
-      for (const name of ['position', 'normal', 'color'])
-        expect(Array.from(part.geometry.getAttribute(name).array).every(Number.isFinite)).toBe(
-          true,
+      for (const name of ['position', 'normal', 'color']) {
+        const attribute = part.geometry.getAttribute(name);
+        expect(attribute.count, `${part.name} ${name} vertex count`).toBe(
+          part.geometry.getAttribute('position').count,
         );
+        expect(
+          Array.from(attribute.array).every(Number.isFinite),
+          `${part.name} ${name} is finite`,
+        ).toBe(true);
+      }
     }
     Object.assign(sim.enemies[0], { active: true, kind: 0, spawnRemaining: 0 });
     Object.assign(sim.enemies[1], { active: true, kind: 1 });

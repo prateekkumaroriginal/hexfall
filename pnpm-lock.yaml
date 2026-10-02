@@ -57,6 +57,9 @@ importers:
       globals:
         specifier: ^16.4.0
         version: 16.5.0
+      meshoptimizer:
+        specifier: 0.22.0
+        version: 0.22.0
       prettier:
         specifier: ^3.9.9
         version: 3.9.9

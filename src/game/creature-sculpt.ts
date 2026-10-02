@@ -26,8 +26,9 @@ export function sculptedGeometry(name: keyof typeof data) {
   geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geometry.setAttribute('sculptShade', new THREE.BufferAttribute(ao, 1, true));
   geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(bytes(source.indices).buffer), 1));
-  if (name === 'slime') {
-    // Split the back UV seam so bubble paint does not stretch across triangles.
+  {
+    // Split every cylindrical UV seam so skin planes and bubble paint cannot
+    // stretch across the back-facing triangles of the sculptures.
     const indices = Array.from(geometry.index!.array);
     const attributes = Object.fromEntries(
       Object.entries(geometry.attributes).map(([key, value]) => [key, Array.from(value.array)]),

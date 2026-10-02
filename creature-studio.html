@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Creature study</title>
+    <style>
+      body {
+        margin: 0;
+        background: #30312a;
+        color: #e4ddbf;
+        font: 14px system-ui;
+      }
+      nav {
+        position: absolute;
+        top: 16px;
+        left: 20px;
+        z-index: 2;
+        display: flex;
+        gap: 8px;
+      }
+      button,
+      select {
+        background: #272921;
+        color: inherit;
+        border: 1px solid #777461;
+        padding: 8px;
+        cursor: pointer;
+      }
+      #stats {
+        position: absolute;
+        bottom: 16px;
+        left: 20px;
+        white-space: pre;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <select id="kind">
+        <option value="1">Orc</option>
+        <option value="0">Slime</option></select
+      ><button data-view="front">Front</button><button data-view="quarter">Three quarter</button
+      ><button data-view="side">Side</button><button data-view="rear">Rear</button
+      ><button data-view="face">Face</button><button id="clay">Clay</button
+      ><button id="wire">Wireframe</button>
+    </nav>
+    <div id="stats"></div>
+    <script type="module" src="/src/creature-studio.ts"></script>
+  </body>
+</html>

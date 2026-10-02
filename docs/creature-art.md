@@ -1,0 +1,37 @@
+# Creature art inspection
+
+Run `pnpm dev` and open `/creature-studio.html`. This development-only viewer uses the same `CreatureRenderer`, materials, baked sculptures, and joint transforms as the game. It provides fixed front, three-quarter, side, rear, and face views, clay and wireframe modes, concept comparison, and downloadable measurements.
+
+The comparison reads the original `orc-concept.png` and `slime-concept.png` from `local-artifacts/enemy-concepts/`. These local references are not included in the repository. Missing images are reported in the viewer. Full-body comparisons align the reference crop with the actual projected height of the model. The front camera is level and orthographic. The sheet has no orc side view or slime rear view; those selections explicitly label the front reference instead. Reference lighting and perspective are not identical to the inspection camera.
+
+## Geometry and details
+
+- Orc proportions have a higher waist, longer legs, compact head and ears, and soles that remain level in the neutral pose. The torso, head, arms, and legs are baked continuous sculptures. The chest tapers into sculpted obliques, with recessed sternum and abdominal grooves, flatter pectorals, fuller trapezius muscles, tapered elbows, and distinct quadriceps.
+- The face has narrow recessed amber eyes, darker compressed brows, a broader nose, cheek hollows, a projecting chin, a downturned mouth, small teeth, and shorter thick tusks. The compact topknot curves downward, with overlapping hair clumps and a thicker leather tie. Hair strands and facial scars follow ray intersections with the actual sculpted surface.
+- The large shoulder has a compact convex front plate, an overlapping lower plate, thicker edging, rivets, two dominant upper spikes, and a smaller front horn. The opposite shoulder has a rounder unspiked shell. The front plate and larger knee guards have raised curved centers. Arm orientations differ slightly, and the feet turn outward.
+- The chest strap follows the torso surface on the front and back. It has raised front edges, a thicker framed buckle nearer the middle of the upper chest, and fitted stitches. The waist belt has a square brass buckle, tongue, and rivets around its circumference.
+- Nine overlapping skirt panels and a shorter, wider front apron have closed backs and hems, modeled thickness, folds, edging, and stitches. Longer bracers flare around the forearms, with overlapping front panels, reinforced rims, fastenings, and stitches. Fists have varied knuckles, curled fingers, and thumbs across the fingers. Boots have darker soles, rounded larger toe caps, fuller shafts, rolled cuffs below the knee plates, overlapping ankle straps, and rivets. Rear-view inspection checks clothing clearance around thighs, calves, and forearms.
+- The slime has a tapered continuous dome, five connected base lobes, recessed eyes, rounded brows, slit pupils, catchlights, a dark mouth, two fangs, painted spots, a painted crown highlight, and an opaque gel finish. The brows are fused into the body sculpture. A subdivided surface patch follows the crown for a crisp painted highlight and merges into the existing gel batch.
+- Muted olive skin uses smooth color washes and deeper local cavity shading. Dark brown leather and charcoal metal have separate roughness responses. Sparse short scuffs use a wear mask in the existing paint texture's alpha channel. The shader blends exposed material color into opaque surfaces; it does not add transparency or another rendering pass. Horns and tusks have darker roots and longitudinal color variation. The studio uses directional lighting and a darker vignette background.
+
+## Measurements and limits
+
+The measurement export reports world-space bounds and twelve horizontal cross-sections from feet to crown. Each section intersects actual triangles with a horizontal plane, then records its outer width divided by model height. This avoids the gaps that vertex-only sampling can introduce after mesh simplification. It is a geometry measurement, not an automatic artistic similarity score.
+
+The current models use 11,556 triangles per slime and 39,868 per orc. A mixed crowd of 48 uses 1,234,176 creature triangles. The 23 creature batches are unchanged. Shared geometry buffers occupy 1,622,692 bytes, about 1.55 MiB. The four shared paint textures are unchanged in count and dimensions. Regression limits remain 14,000 slime triangles and 40,000 orc triangles. The quantized sculpture payload is 472,686 bytes, or 304,306 bytes with gzip.
+
+The neutral slime's front bounding silhouette has a width-to-height ratio of 1.642, close to the approximately 1.64 measured from the front concept. This single ratio does not establish agreement of the entire outline. Viewer render totals include two contact-shadow triangles in addition to the creature geometry counts above.
+
+The browser check submitted all 48 creatures in the game scene and retained 60 total scene draw calls, equal to the two-creature check at the same camera and environment settings. This camera sits at `[0, 3, 18]` and looks toward `[0, 1.3, -6]`; the extra environment submissions differ from the earlier 55-call view. Both checks reported no shader compilation failures or WebGL errors. These counts describe submitted work, not a frame-rate guarantee.
+
+The concept sheets remain the visual target. Exact reproduction has not been established: the painted skin planes, some facial contour transitions, hair volume, leather folds, and individual wear marks still differ. The sheets also do not specify complete geometry for every hidden surface. The viewer makes these differences inspectable rather than treating a passing build or a triangle count as proof of an exact match.
+
+## Rebuilding and verification
+
+`node scripts/sculpt-creatures.mjs` rebuilds the quantized sculptures. Use `--only=head,hair` to rebuild selected sculptures. Marching tetrahedra samples the authored fields, meshoptimizer simplifies the welded surfaces, and vertices project back onto the fields before quantization. The bake removes collapsed quantized faces, repairs winding, and rejects open or non-manifold edges. All seven packed sculptures have closed, consistently wound topology. Sculpting and mesh simplification run offline.
+
+`pnpm test`, `pnpm lint`, and `pnpm build` check the game implementation. The creature tests cover geometry budgets, finite attributes with matching lengths, shared batches and textures, texture disposal, crowd submission, culling, and slime birth behavior. Packed-sculpture tests check duplicate vertices, degenerate triangles, opposite edge winding, and closed sphere topology. UV seam splitting happens after packed-sculpture decoding for all body parts. It preserves the geometry while preventing paint from stretching across the back.
+
+Local inspection reports are saved as `local-artifacts/enemy-concepts/refinement-measurements.json` and `refinement-crowd-check.json`.
+
+The follow-up pass addresses the supplied 178-item orc comparison. Its measurements and crowd check are saved as `difference-pass-measurements.json` and `difference-pass-crowd-check.json` in the same directory. Front, face, three-quarter, and rear comparisons were inspected, together with a side geometry check. The slime's existing silhouette was also checked against its front reference; its geometry is unchanged by this pass. All 79 tests, lint, and the production build pass. The build still reports the existing large-chunk warning.

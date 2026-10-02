@@ -81,19 +81,20 @@ export class CreatureRenderer {
     const material: Record<Surface, THREE.Material> = {
       skin: new THREE.MeshStandardMaterial({
         vertexColors: true,
-        roughness: 0.84,
+        roughness: 0.76,
         map: surfacePaint('skin'),
       }),
       iron: new THREE.MeshStandardMaterial({
         vertexColors: true,
-        metalness: 0.35,
-        roughness: 0.64,
+        metalness: 0.42,
+        roughness: 0.49,
         map: surfacePaint('iron'),
       }),
       leather: new THREE.MeshStandardMaterial({
         vertexColors: true,
-        roughness: 0.92,
+        roughness: 0.83,
         map: surfacePaint('leather'),
+        side: THREE.DoubleSide,
       }),
       ivory: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4 }),
       dark: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }),
@@ -106,12 +107,29 @@ export class CreatureRenderer {
       gel: new THREE.MeshPhysicalMaterial({
         map: slimePaint(),
         vertexColors: true,
-        roughness: 0.17,
-        metalness: 0.05,
-        clearcoat: 1,
-        clearcoatRoughness: 0.12,
+        roughness: 0.63,
+        metalness: 0,
+        clearcoat: 0.18,
+        clearcoatRoughness: 0.6,
       }),
     };
+    for (const surface of ['iron', 'leather'] as const) {
+      const painted = material[surface] as THREE.MeshStandardMaterial;
+      const wear = new THREE.Color(surface === 'iron' ? '#7b7c7b' : '#80644b');
+      painted.onBeforeCompile = (shader) => {
+        shader.uniforms.creatureWearColor = { value: wear };
+        shader.fragmentShader = 'uniform vec3 creatureWearColor;\n' + shader.fragmentShader;
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          #ifdef USE_MAP
+            diffuseColor.rgb = mix(diffuseColor.rgb, creatureWearColor, sampledDiffuseColor.a);
+            diffuseColor.a = 1.0;
+          #endif`,
+        );
+      };
+      painted.customProgramCacheKey = () => 'creature-painted-wear-v3';
+    }
     // Material disposal is shared by the existing scene cleanup path.
     for (const surface of ['skin', 'iron', 'leather', 'gel'] as const) {
       material[surface].addEventListener('dispose', () => {
@@ -162,6 +180,7 @@ export class CreatureRenderer {
       this.root.rotation.set(0, angle, 0);
       this.root.scale.set(1, 1, 1);
       if (e.kind) {
+        this.root.scale.x = 0.92;
         this.root.position.y = Math.abs(Math.sin(stride)) * 0.035;
         this.root.rotation.z = Math.sin(stride) * 0.015;
         this.root.updateMatrix();
@@ -172,13 +191,13 @@ export class CreatureRenderer {
           const swing = attacking ? 0 : Math.sin(stride) * side * 0.42;
           const attack =
             attacking && side > 0 ? -1.7 * Math.sin((1 - e.windup / 0.55) * Math.PI) : 0;
-          this.joint.position.set(side * 0.66, 1.94, 0);
-          this.joint.rotation.set(-swing * 0.7 + attack, 0, side * 0.04);
+          this.joint.position.set(side * 0.66, 2.04, 0);
+          this.joint.rotation.set(-swing * 0.7 + attack, side < 0 ? -0.09 : 0.06, side * 0.045);
           this.joint.scale.set(1, 1, 1);
           this.joint.updateMatrix();
           this.transforms[arm].multiplyMatrices(this.root.matrix, this.joint.matrix);
-          this.joint.position.set(side * 0.28, 0.98, 0);
-          this.joint.rotation.set(swing, 0, side * -0.055);
+          this.joint.position.set(side * 0.33, 1.18, 0);
+          this.joint.rotation.set(swing, side * 0.19, 0);
           this.joint.updateMatrix();
           this.transforms[leg].multiplyMatrices(this.root.matrix, this.joint.matrix);
         }

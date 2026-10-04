@@ -189,7 +189,7 @@ export function buildStaff(group: THREE.Group): THREE.Mesh {
   );
   crystal.position.y = 1.1;
   group.add(crystal);
-  group.position.set(0.55, -0.68, -1.15);
+  group.position.set(0.78, -0.86, -1.15);
   group.scale.setScalar(0.65);
   group.rotation.set(0.15, 0, -0.15);
   return crystal;

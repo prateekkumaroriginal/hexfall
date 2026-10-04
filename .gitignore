@@ -10,3 +10,5 @@ local-artifacts/
 # Blender keeps the editable source here; numbered save backups are local.
 *.blend1
 *.blend2
+__pycache__/
+*.pyc

@@ -5,11 +5,16 @@ import type { Enemy } from './simulation';
 import { buildCreatureGeometries } from './creature-models';
 import type { CreatureBone, CreatureSurface } from './creature-models';
 import { slimePaint, surfacePaint } from './creature-paint';
-import { ORC_JOINT_PIVOTS } from './creature-blender';
+import { loadTripoOrcAsset, TripoOrcRenderer } from './tripo-orc';
+import { OrcLocomotion } from './tripo-orc-animation';
 
 type Bone = CreatureBone;
 type Surface = CreatureSurface;
 type Part = { bone: Bone; mesh: THREE.InstancedMesh };
+type OrcModel = {
+  groups: Map<string, THREE.BufferGeometry[]>;
+  pivots: Record<string, number[]>;
+};
 
 // Preserve the original 2.5 pulses per 1.4 seconds independently of birth duration.
 const SLIME_BIRTH_BUBBLE_PERIOD = 0.56;
@@ -18,6 +23,10 @@ const SLIME_BIRTH_BUBBLE_PERIOD = 0.56;
 // No per-enemy meshes, textures, animation mixers, or allocations in the update loop.
 export class CreatureRenderer {
   private parts: Part[] = [];
+  private disposed = false;
+  private riggedOrcs?: TripoOrcRenderer;
+  private orcLoading?: Promise<void>;
+  private orcLocomotion = new OrcLocomotion();
   private frustum = new THREE.Frustum();
   private viewProjection = new THREE.Matrix4();
   private bounds = new THREE.Sphere(new THREE.Vector3(), 2);
@@ -35,7 +44,10 @@ export class CreatureRenderer {
     rightLeg: new THREE.Matrix4(),
     slime: new THREE.Matrix4(),
   };
-  constructor(scene: THREE.Scene) {
+  constructor(
+    private scene: THREE.Scene,
+    private orcModel?: OrcModel,
+  ) {
     const shadowMaterial = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
@@ -137,7 +149,7 @@ export class CreatureRenderer {
         (material[surface] as THREE.MeshStandardMaterial).map?.dispose();
       });
     }
-    const groups = buildCreatureGeometries();
+    const groups = buildCreatureGeometries(orcModel?.groups);
 
     for (const [key, geometries] of groups) {
       const [bone, surface] = key.split(':') as [Bone, Surface];
@@ -152,8 +164,49 @@ export class CreatureRenderer {
       scene.add(mesh);
       this.parts.push({ bone, mesh });
     }
+    const used = new Set(this.parts.map((part) => part.mesh.material));
+    for (const unused of Object.values(material)) {
+      if (!used.has(unused)) unused.dispose();
+    }
+  }
+  loadTripoOrc() {
+    return (this.orcLoading ??= this.replaceOrc());
+  }
+  private releaseParts(parts: Part[], retained: Part[] = []) {
+    const materials = (part: Part) =>
+      Array.isArray(part.mesh.material) ? part.mesh.material : [part.mesh.material];
+    const retainedMaterials = new Set(retained.flatMap(materials));
+    const releasedMaterials = new Set(parts.flatMap(materials));
+    for (const { mesh } of parts) {
+      mesh.removeFromParent();
+      mesh.geometry.dispose();
+      mesh.dispose();
+    }
+    for (const material of releasedMaterials) {
+      if (!retainedMaterials.has(material)) material.dispose();
+    }
+  }
+  private async replaceOrc() {
+    const imported = new TripoOrcRenderer(this.scene, await loadTripoOrcAsset());
+    if (this.disposed) {
+      imported.dispose();
+      return;
+    }
+    const retained = this.parts.filter((part) => part.bone === 'slime');
+    this.releaseParts(
+      this.parts.filter((part) => part.bone !== 'slime'),
+      retained,
+    );
+    this.parts = retained;
+    this.riggedOrcs = imported;
+  }
+  // The engine disposes scene resources. Stop an outstanding load from adding new ones afterward.
+  dispose() {
+    this.disposed = true;
+    this.riggedOrcs?.dispose();
   }
   update(enemies: Enemy[], time: number, playerX: number, playerZ: number, camera?: THREE.Camera) {
+    this.riggedOrcs?.beginFrame();
     if (camera) {
       camera.updateMatrixWorld();
       this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -163,13 +216,29 @@ export class CreatureRenderer {
       orcs = 0,
       shadows = 0,
       bubbles = 0;
-    for (const e of enemies) {
-      if (!e.active) continue;
+    for (let slot = 0; slot < enemies.length; slot++) {
+      const e = enemies[slot];
+      if (!e.active) {
+        this.orcLocomotion.reset(slot);
+        continue;
+      }
+      if (e.kind && this.riggedOrcs) this.orcLocomotion.update(slot, e, time);
       this.bounds.center.set(e.x, 1.4, e.z);
       if (camera && !this.frustum.intersectsSphere(this.bounds)) continue;
       const angle = Math.atan2(playerX - e.x, playerZ - e.z),
         stride = time * (e.kind ? 6 : 3) + e.phase;
       const attacking = e.windup > 0;
+      if (e.kind && this.riggedOrcs) {
+        this.riggedOrcs.update(
+          slot,
+          e,
+          angle,
+          this.orcLocomotion.phase,
+          this.orcLocomotion.walk,
+          Math.hypot(playerX - e.x, playerZ - e.z),
+          time,
+        );
+      }
       const birthWidth = e.kind ? 1 : slimeSpawnScale(e.spawnRemaining),
         birthHeight = e.kind ? 1 : slimeSpawnScale(e.spawnRemaining, true);
       this.joint.position.set(e.x, 0.065, e.z);
@@ -180,30 +249,30 @@ export class CreatureRenderer {
       this.root.position.set(e.x, 0, e.z);
       this.root.rotation.set(0, angle, 0);
       this.root.scale.set(1, 1, 1);
-      if (e.kind) {
+      if (e.kind && !this.riggedOrcs) {
         this.root.position.y = Math.abs(Math.sin(stride)) * 0.035;
         this.root.rotation.z = Math.sin(stride) * 0.015;
         this.root.updateMatrix();
         this.transforms.body.copy(this.root.matrix);
-        for (const side of [-1, 1]) {
+        for (const side of this.orcModel ? [-1, 1] : []) {
           const arm: Bone = side < 0 ? 'leftArm' : 'rightArm',
             leg: Bone = side < 0 ? 'leftLeg' : 'rightLeg';
           const swing = attacking ? 0 : Math.sin(stride) * side * 0.42;
           const attack =
             attacking && side > 0 ? -1.7 * Math.sin((1 - e.windup / 0.55) * Math.PI) : 0;
-          const armPivot = ORC_JOINT_PIVOTS[arm];
+          const armPivot = this.orcModel!.pivots[arm];
           this.joint.position.set(armPivot[0], armPivot[1], armPivot[2]);
           this.joint.rotation.set(-swing * 0.7 + attack, 0, 0);
           this.joint.scale.set(1, 1, 1);
           this.joint.updateMatrix();
           this.transforms[arm].multiplyMatrices(this.root.matrix, this.joint.matrix);
-          const legPivot = ORC_JOINT_PIVOTS[leg];
+          const legPivot = this.orcModel!.pivots[leg];
           this.joint.position.set(legPivot[0], legPivot[1], legPivot[2]);
           this.joint.rotation.set(swing, 0, 0);
           this.joint.updateMatrix();
           this.transforms[leg].multiplyMatrices(this.root.matrix, this.joint.matrix);
         }
-      } else {
+      } else if (!e.kind) {
         const bounce = Math.sin(stride),
           windup = attacking ? Math.sin((1 - e.windup / 0.4) * Math.PI) : 0;
         this.root.position.x += Math.sin(angle) * windup * 0.2;

@@ -31,8 +31,11 @@ export function buildBlenderOrcGeometries() {
         2,
       ),
     );
+    const indices = bytes(source.indices).buffer;
     geometry.setIndex(
-      new THREE.Uint16BufferAttribute(new Uint16Array(bytes(source.indices).buffer), 1),
+      (data as { indexComponentType?: number }).indexComponentType === 5125
+        ? new THREE.Uint32BufferAttribute(new Uint32Array(indices), 1)
+        : new THREE.Uint16BufferAttribute(new Uint16Array(indices), 1),
     );
     // Match the slime's float attributes for the existing merge and inspection paths.
     for (const name of ['normal', 'color']) {

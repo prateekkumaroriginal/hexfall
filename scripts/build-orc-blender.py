@@ -4,11 +4,9 @@ Run with Blender --background --factory-startup --python scripts/build-orc-blend
 To export hand edits: blender assets/enemies/orc.blend --background --python this.py -- --export-only.
 Authoring coordinates are X right, Y up, Z forward, matching the game.
 """
-import argparse
 import base64
 import json
 import math
-import os
 import random
 import struct
 import sys
@@ -127,7 +125,7 @@ def loft(name, rows, bone='body', surface='skin', color=None, sides=40, steps=42
 
 
 def ellipsoid(name, center, radii, bone='body', surface='skin', color=None, rotation=0, power=2,
-              sides=20, rings=12):
+              sides=64, rings=40):
     v, f = [], []
     for row in range(rings + 1):
         phi = math.pi * (row + .001) / (rings + .002)
@@ -183,12 +181,12 @@ def tube(name, points, radius, bone='body', surface='skin', color=None, tip=None
     return mesh(name, v, f, bone, surface, color)
 
 
-def union(objects, name, voxel, triangle_limit):
+def union(objects, name, voxel):
     bpy.ops.object.select_all(action='DESELECT')
     for o in objects:
         o.select_set(True)
     bpy.context.view_layer.objects.active = objects[0]
-    bpy.ops.object.join()
+    if len(objects)>1:bpy.ops.object.join()
     obj = objects[0]
     for o in objects[1:]:
         MODELS.remove(o)
@@ -196,11 +194,7 @@ def union(objects, name, voxel, triangle_limit):
     obj.data.remesh_voxel_size = voxel
     bpy.ops.object.voxel_remesh()
     mod = obj.modifiers.new('Sculpt surface relaxation', 'SMOOTH')
-    mod.factor, mod.iterations = .35, 2
-    bpy.ops.object.modifier_apply(modifier=mod.name)
-    obj.data.calc_loop_triangles()
-    mod = obj.modifiers.new('Game topology', 'DECIMATE')
-    mod.ratio = min(1, triangle_limit / len(obj.data.loop_triangles))
+    mod.factor, mod.iterations = .45, 6
     bpy.ops.object.modifier_apply(modifier=mod.name)
     for p in obj.data.polygons:
         p.use_smooth = True
@@ -266,172 +260,12 @@ def surface_depth(obj, x, y, front=True):
     return game(loc).z if hit else (.2 if front else -.2)
 
 
-def build_body():
-    rows = [(1.23,.35,.215,0,0), (1.37,.365,.215,0,0), (1.53,.4,.22,0,0),
-            (1.72,.46,.24,0,-.02), (1.91,.545,.255,0,-.025), (2.02,.52,.225,0,-.04),
-            (2.10,.365,.205,0,-.025), (2.17,.22,.175,0,-.015), (2.27,.18,.16,0,-.005)]
-    def sculpt(x,y,z,a):
-        front = max(0, math.cos(a))**3
-        side = 1 if x >= 0 else -1
-        pec_y = 1.92 + (abs(x)-.25)*.22
-        pec = math.exp(-((x-side*.25)/.255)**4 - ((y-pec_y)/.13)**4)
-        abs_detail = sum(.073*math.exp(-((abs(x)-.112)/.103)**4-((y-yy)/.048)**4)
-                         for yy in (1.445,1.565,1.68))
-        oblique = .034*gauss((abs(x)-(.255+.18*(y-1.45)))/.055)*gauss((y-1.54)/.19)
-        cleft = .037*gauss(x/.02)*gauss((y-1.69)/.31)
-        abdominal_grooves = sum(.021*gauss((y-yy)/.012)*gauss(x/.28) for yy in (1.505,1.623))
-        pec_crease = .022*gauss((y-(1.785+.2*(abs(x)-.22)))/.018)*gauss((abs(x)-.24)/.23)
-        z += front*(pec*.079 + abs_detail + oblique - cleft - pec_crease - abdominal_grooves)
-        back = max(0,-math.cos(a))**3
-        z -= back*(.035*gauss((abs(x)-.23)/.17)*gauss((y-1.9)/.22) - .02*gauss(x/.04))
-        return x,y,z
-    return loft('Torso / pectorals, abs, obliques and trapezius', rows, sides=64, steps=58, sculpt=sculpt)
 
 
-def build_head():
-    rows = [(2.18,.09,.10,0,.015),(2.225,.187,.15,0,.015),(2.28,.236,.17,0,.0),
-            (2.36,.225,.185,0,-.015),(2.44,.242,.205,0,-.025),(2.54,.252,.205,0,-.035),
-            (2.64,.242,.205,0,-.045),(2.71,.215,.17,0,-.045),(2.75,.135,.105,0,-.04),
-            (2.765,.012,.02,0,-.045)]
-    def sculpt(x,y,z,a):
-        front=max(0,math.cos(a))**3
-        nose=.12*gauss(x/.075)*gauss((y-2.463)/.075)
-        bridge=.075*gauss(x/.037)*gauss((y-2.54)/.095)
-        chin=.063*gauss(x/.185)*gauss((y-2.264)/.058)
-        muzzle=.048*gauss(x/.175)*gauss((y-2.352)/.054)
-        cheek=.066*gauss((abs(x)-.194)/.054)*gauss((y-2.467)/.085)
-        eye=.065*gauss((abs(x)-.127)/.083)*gauss((y-2.537)/.045)
-        hollow=.044*gauss((abs(x)-.188)/.048)*gauss((y-2.374)/.045)
-        return x,y,z+front*(nose+bridge+chin+muzzle+cheek-eye-hollow)
-    head=loft('Head / continuous facial sculpture', rows, sides=64, steps=64, sculpt=sculpt)
-    brows=[]
-    for side in (-1,1):
-        brows.append(tube('Brow / compressed angular ridge', [(side*.041,2.575,.235),
-            (side*.105,2.566,.225),(side*.185,2.597,.189),(side*.228,2.596,.154)],
-            lambda t: .046*(math.sin(math.pi*t)**.5*.85+.28), color='#56643b', sides=12, steps=16, flatten=.68))
-    nose=ellipsoid('Nose / broad sculpted bulb',(0,2.478,.293),(.074,.05,.077),sides=24,rings=16)
-    nostril_forms=[ellipsoid('Nose / alar fold',(side*.06,2.452,.273),(.034,.029,.047),
-                            sides=20,rings=12) for side in (-1,1)]
-    chin=ellipsoid('Chin / rounded lower-jaw volume',(0,2.252,.177),(.18,.071,.088),power=2.5,sides=28,rings=16)
-    head=union([head]+brows+[nose,chin]+nostril_forms,'Head / sculpted brow and muzzle',.0065,6100)
-    for side in (-1,1):
-        # A solid curved ear with recessed inner folds, not a flat triangular attachment.
-        outline=[(side*.239,2.487,-.017),(side*.272,2.603,-.022),(side*.367,2.644,-.04),
-                 (side*.458,2.638,-.075),(side*.408,2.566,-.067),(side*.315,2.493,-.033)]
-        plate('Ear / curved rim',outline,(side*.318,2.567,.034),'body','skin','#7c8850',.035,5)
-        inner=[(side*.282,2.537,.031),(side*.299,2.596,.025),(side*.41,2.618,-.032),
-               (side*.362,2.558,.001)]
-        plate('Ear / inner fold',inner,(side*.327,2.574,.018),'body','skin','#495736',.008,3)
-        tube('Ear / cartilage',[(side*.275,2.52,.033),(side*.3,2.558,.048),(side*.331,2.585,.039)],
-             .011,color='#8a9361',tip=.004,sides=6,steps=7)
-        x,y=side*.127,2.532
-        depth=surface_depth(head,x,y)
-        # The socket and iris share a slanted almond contour; the brow covers the upper lid.
-        def almond(name,cx,cy,rx,ry,z,surface,color):
-            v=[(cx,cy,z+.012)];f=[]
-            for j in range(32):
-                a=j/32*math.tau
-                dx=math.cos(a)*rx
-                dy=math.sin(a)*ry*.85+side*dx*.20
-                v.append((cx+dx,cy+dy,z-.005+abs(dx)*.06))
-            for j in range(32): f.append((0,j+1,(j+1)%32+1))
-            return mesh(name,v,f,'body',surface,color)
-        almond('Eye / deep socket',x,y,.082,.032,depth+.012,'dark','#263021')
-        almond('Eye / amber iris',x,y-.005,.047,.014,depth+.027,'eye','#eeb846')
-        ellipsoid('Eye / vertical pupil',(x+side*.004,y-.005,depth+.043),(.009,.011,.005),
-                  surface='dark',color='#1e2619',sides=12,rings=7)
-        lower=[(x-side*.072,y-.012,depth+.005),(x,y-.032,depth+.012),(x+side*.067,y-.016,depth+.009)]
-        tube('Eye / lower lid',lower,.009,color='#586b3b',tip=.006,sides=6,steps=9)
-        nx,ny=side*.054,2.448
-        nz=surface_depth(head,nx,ny)
-        ellipsoid('Nose / nostril recess',(nx,ny-.008,nz+.002),(.023,.012,.008),
-                  surface='dark',color='#303725',rotation=side*.18,sides=14,rings=7)
-        tube('Face / nasolabial fold',[(side*.09,2.416,surface_depth(head,side*.09,2.416)+.001),
-             (side*.137,2.373,surface_depth(head,side*.137,2.373)+.002),
-             (side*.164,2.333,surface_depth(head,side*.164,2.333)+.002)],.004,
-             color='#536337',tip=.002,sides=5,steps=8)
-        tube('Tusk / lower-jaw ivory',[(side*.173,2.293,.205),(side*.188,2.365,.263),
-             (side*.173,2.451,.268)],lambda t:.044*(1-t)**.75+.001,
-             surface='ivory',sides=10,steps=12)
-        tube('Face / cheek scar',[(side*.191,2.529,surface_depth(head,side*.191,2.529)+.003),
-             (side*.204,2.493,surface_depth(head,side*.204,2.493)+.003),
-             (side*.212,2.445,surface_depth(head,side*.212,2.445)+.003)],.003,
-             color='#a47e55',tip=.001,sides=4,steps=7)
-    # Sculpted frown, separate lip volumes, and small teeth in the opening.
-    mouth=[(-.166,2.323,.212),(-.083,2.346,.239),(0,2.351,.245),(.083,2.346,.239),(.166,2.323,.212)]
-    tube('Mouth / opening',mouth,.014,surface='dark',color='#2b2d20',sides=8,steps=18,flatten=.65)
-    tube('Mouth / lower lip',[(-.155,2.30,.216),(-.075,2.317,.257),(0,2.316,.264),
-         (.075,2.317,.257),(.155,2.30,.216)],.023,color='#7c8852',tip=.015,sides=10,steps=18,flatten=.70)
-    for x in (-.079,.064):
-        tube('Mouth / small tooth',[(x,2.335,.25),(x,2.357,.247)],.012,
-             surface='ivory',tip=.002,sides=7,steps=3)
-    tube('Chin / cleft',[(0,2.273,surface_depth(head,0,2.273)+.002),
-         (0,2.242,surface_depth(head,0,2.242)+.002)],.003,color='#54653d',tip=.001,sides=4,steps=4)
-    return head
 
 
-def build_hair():
-    def sculpt(x,y,z,a):
-        groove=.005*math.sin(a*7+.6)*max(0,math.cos(a))
-        hairline=-.028*gauss(x/.065)*max(0,math.cos(a))*gauss((y-2.735)/.035)
-        return x,y+groove+hairline,z+.009*math.cos(a*7)
-    loft('Hair / swept continuous crown',[(2.735,.18,.19,0,-.035),
-         (2.786,.20,.183,0,-.042),(2.832,.12,.132,0,-.062),
-         (2.85,.035,.052,0,-.09)],surface='dark',color='#302923',sides=36,steps=16,sculpt=sculpt)
-    tube('Hair / compact curved topknot',[(0,2.832,-.09),(0,2.88,-.1),(-.006,2.928,-.104),
-         (-.018,2.958,-.11),(-.052,2.942,-.127)],
-         lambda t:.048*(.6+math.sin(math.pi*t)*.55)*(1-.35*t),surface='dark',color='#282421',
-         sides=14,steps=20,flatten=.85)
-    band('Hair / leather tie',2.865,.061,.057,0,-.099,.028,'body','#946133')
-    tube('Hair / trailing rear clump',[(0,2.754,-.204),(0,2.674,-.228),(.012,2.58,-.222)],
-         lambda t:.073*(1-t)+.002,surface='dark',color='#29251f',sides=10,steps=12)
-    for j in range(5):
-        off=(j-2)*.016
-        tube('Hair / sculpted strand',[(off,2.842,-.045),(off,2.885,-.05),
-             (off-.009,2.923,-.073),(off-.033,2.931,-.107)],.0013,
-             surface='dark',color='#41362d',tip=.0005,sides=4,steps=12)
 
 
-def build_arm(side):
-    bone='leftArm' if side<0 else 'rightArm'
-    rows=[(1.12,.125,.125,side*.87,.025),(1.31,.18,.18,side*.88,.011),
-          (1.48,.195,.178,side*.855,0),(1.60,.14,.145,side*.83,-.006),
-          (1.80,.22,.22,side*.76,-.025),(2.01,.245,.23,side*.69,-.03),
-          (2.14,.17,.16,side*.67,-.035)]
-    def sculpt(x,y,z,a):
-        z += max(0,math.cos(a))**3*(.035*gauss((y-1.81)/.13)+.024*gauss((y-1.43)/.12))
-        return x,y,z
-    arm=loft('Arm / deltoid, biceps and tapered elbow',rows,bone,sides=36,steps=36,sculpt=sculpt)
-    parts=[arm,ellipsoid('Hand / clenched palm',(side*.873,1.055,.066),(.155,.119,.118),bone,
-                         power=3,sides=24,rings=14)]
-    for finger in range(4):
-        x=side*(.872+(finger-1.5)*.068)
-        yy=1.039+[.009,.019,.01,-.016][finger]
-        parts.append(ellipsoid('Finger / knuckle',(x,yy,.155),(.039,.057,.048),bone,power=3,sides=14,rings=9))
-        parts.append(ellipsoid('Finger / curled tip',(x,yy-.065,.126),(.034,.045,.041),bone,power=3,sides=14,rings=9))
-    parts.append(ellipsoid('Thumb / over curled fingers',(side*.779,1.086,.163),(.086,.048,.046),bone,
-                           rotation=side*-.5,power=2.6,sides=18,rings=10))
-    arm=union(parts,'Arm and fist / continuous sculpture',.0095,2900)
-    for j in range(3):
-        x=side*(.872+(j-1)*.068)
-        tube('Hand / finger crease',[(x,1.039,.198),(x,1.008,.19),(x,.98,.151)],.003,
-             bone,color='#4a5d34',tip=.0015,sides=4,steps=5)
-    # Cuff follows the narrowing forearm, with curved sloping rims and an overlapping front flap.
-    loft('Bracer / thick flared leather',[(1.17,.18,.21,side*.875,.025),
-         (1.21,.20,.23,side*.88,.023),(1.43,.25,.254,side*.86,.003),
-         (1.495,.26,.26,side*.85,0)],bone,'leather','#432c24',sides=32,steps=15,
-         sculpt=lambda x,y,z,a:(x,y+math.sin(a)*side*.045,z))
-    band('Bracer / upper rolled edge',1.481,.266,.269,side*.853,.005,.035,bone,tilt=side*.045)
-    band('Bracer / wrist rolled edge',1.184,.195,.229,side*.875,.025,.03,bone,tilt=side*.025)
-    outline=[(side*.876-.12,1.20,.235),(side*.876+.123,1.195,.233),
-             (side*.85+.17,1.467,.245),(side*.85-.172,1.48,.245)]
-    plate('Bracer / overlapping panel',outline,(side*.87,1.336,.281),bone,'leather','#51372a',.018,4)
-    for y in (1.23,1.45):
-        stud('Bracer / brass fastener',(side*.948,y,.271),bone,.014)
-    for j in range(6):
-        y=1.235+j*.037
-        tube('Bracer / seam stitch',[(side*.81,y,.284),(side*.81+.012,y+.007,.285)],.002,
-             bone,'leather','#876b45',sides=4,steps=1)
 
 
 def dome(name,cx,cy,rx,rz,ry,bone,color):
@@ -457,179 +291,10 @@ def dome(name,cx,cy,rx,rz,ry,bone,color):
     return obj
 
 
-def build_armor():
-    shell=dome('Pauldron / unspiked convex shell',.69,2.042,.267,.255,.15,'rightArm','#434551')
-    for obj in [shell,MODELS[-1]]:
-        for vertex in obj.data.vertices:
-            p=game(vertex.co)
-            p.y-=(p.x-.69)*.22
-            vertex.co=world(p)
-    dome('Pauldron / spiked support shell',-.695,2.055,.277,.26,.154,'leftArm','#414650')
-    outline=[(-1.003,2.075,.05),(-.955,2.201,.105),(-.816,2.267,.14),
-             (-.622,2.253,.19),(-.434,2.177,.16),(-.426,2.046,.239),
-             (-.527,1.977,.287),(-.718,1.992,.286),(-.922,2.061,.181)]
-    plate('Pauldron / main forged convex plate',outline,(-.713,2.119,.326),'leftArm',color='#474952',thickness=.027)
-    rim('Pauldron / raised bevel',outline,'leftArm',color='#87765d',radius=.009)
-    lower=[(-1.02,2.009,.04),(-.952,2.068,.14),(-.788,2.077,.22),
-           (-.588,2.014,.226),(-.626,1.937,.199),(-.832,1.952,.169)]
-    plate('Pauldron / overlapping lower plate',lower,(-.844,2.002,.261),'leftArm',color='#4b4c52',thickness=.023)
-    rim('Pauldron / lower bevel',lower,'leftArm',color='#71614c',radius=.008)
-    for p in [(-.54,2.037,.299),(-.714,2.025,.317),(-.89,2.099,.234)]:
-        stud('Pauldron / large rivet',p,'leftArm',.019)
-    for p in [(.542,2.042,.215),(.74,2.064,.254)]:
-        stud('Pauldron / rivet',p,'rightArm',.013)
-    for i,(points,r) in enumerate([
-        ([(-.861,2.236,.05),(-.9,2.374,.067),(-.941,2.49,.064)],.065),
-        ([(-.645,2.244,.112),(-.668,2.417,.12),(-.725,2.56,.129)],.079),
-        ([(-.482,2.048,.27),(-.501,2.132,.333),(-.525,2.249,.334)],.051)]):
-        tube('Pauldron / ivory horn '+str(i),points,lambda t:r*(1-t)**.78+.001,
-             'leftArm','ivory',sides=12,steps=12)
-    # Restrained edge scuffs follow the forged front plate's surface.
-    for j,(x,y,z) in enumerate([(-.87,2.132,.27),(-.73,2.163,.329),(-.62,2.061,.322)]):
-        tube('Pauldron / edge wear',[(x,y,z),(x+.026,y+.01,z-.003),(x+.04,y+.024,z-.014)],
-             .0026,'leftArm','iron','#918675',tip=.001,sides=3,steps=3)
 
 
-def build_clothes(torso):
-    thighs=[obj for obj in MODELS if obj.name.startswith('Thigh /')]
-    loft('Belt / curved thick waist leather',[(1.258,.406,.244,0,0),(1.283,.422,.257,0,0),
-         (1.414,.409,.246,0,0),(1.44,.392,.236,0,0)],surface='leather',color='#423029',sides=48,steps=8)
-    for y in (1.281,1.421):
-        tube('Belt / reinforced edge',[(math.sin(j/48*math.tau)*.414,y,
-             math.cos(j/48*math.tau)*.252) for j in range(50)],.004,
-             surface='leather',color='#745538',sides=4,steps=48)
-    rectangle_frame('Belt / square brass buckle',0,1.353,.284,.18,.174)
-    for x in (-.29,-.17,.19,.30):
-        stud('Belt / rivet',(x,1.354,math.sqrt(max(.001,1-(x/.418)**2))*.258),'body',.015)
-    for j,angle in enumerate([0,-.55,.55,-1.15,1.15,-1.85,1.85,-2.5,2.5,math.pi]):
-        apron=j==0
-        length=.53 if apron else .39+(j%3)*.018
-        half=.30 if apron else .36
-        def point(u,t,back=0):
-            a=angle+(u-.5)*2*half*(1-t*.12)
-            radius=.433+(1-t)*(.035 if apron else .085)
-            depth=.293+(1-t)*(.035 if apron else .043)
-            fold=.012*math.sin(u*math.tau+j*.6)*(1-t)
-            y=1.304-(1-t)*length+(1-t)**2*.012*math.cos(u*math.tau)
-            x=math.sin(a)*(radius+fold-back)
-            z=math.cos(a)*(depth+fold-back)+(.01 if apron else 0)
-            sign=1 if math.cos(a)>0 else -1
-            for thigh in thighs:
-                hit,loc,_,_=thigh.ray_cast(world((x,y,2*sign)),world((0,0,-sign)))
-                if hit:
-                    z=sign*max(sign*z,sign*game(loc).z+.027-back)
-            return x,y,z
-        rows,cols=6,8
-        v,f=[],[]
-        for back in (0,.018):
-            for r in range(rows+1):
-                for c in range(cols+1): v.append(point(c/cols,r/rows,back))
-        count=(rows+1)*(cols+1)
-        for r in range(rows):
-            for c in range(cols):
-                k=r*(cols+1)+c
-                face=(k,k+1,k+cols+2,k+cols+1)
-                f.extend([face,tuple(i+count for i in reversed(face))])
-        edge=[*range(cols),*[r*(cols+1)+cols for r in range(rows)],
-              *[count-1-c for c in range(cols)],*[(rows-r)*(cols+1) for r in range(rows)]]
-        for a,b in zip(edge,edge[1:]+edge[:1]):f.append((a,a+count,b+count,b))
-        mesh('Skirt / front apron' if apron else 'Skirt / overlapping leather panel '+str(j),
-             v,f,'body','leather','#483129' if j%2 else '#50372b')
-        for u in (.03,.97):
-            tube('Skirt / reinforced seam',[point(u,t/12) for t in range(13)],.0045,
-                 surface='leather',color='#755235',sides=4,steps=12)
-            for st in range(1,7):
-                tube('Skirt / stitch',[point(u,st/8),point(u,st/8+.02)],.0018,
-                     surface='leather',color='#957249',sides=3,steps=1)
-        if j in (1,2):
-            for u in (.18,.82): stud('Skirt / mounting rivet',point(u,.92),'body',.01)
-    path=sample_curve([(-.4,2.08,0),(-.3,1.996,0),(-.12,1.814,0),(.055,1.619,0),(.295,1.419,0)],44)
-    def strap_depth(x,y,front=True):
-        # Leather bridges muscle grooves instead of sinking into each abdominal recess.
-        sign=1 if front else -1
-        samples=[surface_depth(torso,x+d*.67,y-d*.74,front)*sign for d in (-.05,-.025,0,.025,.05)]
-        return max(samples)*sign
-    for front in (True,False):
-        v,f=[],[]
-        cols=6
-        stride=cols+1
-        count=45*stride
-        for back in (0,.017):
-            for i,p in enumerate(path):
-                d=(path[min(44,i+1)]-path[max(0,i-1)]).normalized()
-                for column in range(cols+1):
-                    side=column/cols*2-1
-                    x=p.x-d.y*side*.058
-                    y=p.y+d.x*side*.058
-                    z=strap_depth(x,y,front)+(1 if front else -1)*(.015+back)
-                    v.append((x,y,z))
-        for i in range(44):
-            for column in range(cols):
-                k=i*stride+column
-                f.extend([(k,k+1,k+stride+1,k+stride),
-                          (k+count,k+stride+count,k+stride+count+1,k+count+1)])
-        for i in range(44):
-            k=i*stride
-            for a,b in ((k,k+stride),(k+cols,k+stride+cols)):f.append((a,a+count,b+count,b))
-        for column in range(cols):
-            k=44*stride+column
-            f.extend([(column,column+count,column+count+1,column+1),
-                      (k,k+1,k+count+1,k+count)])
-        mesh('Chest strap / fitted front' if front else 'Chest strap / fitted rear',v,f,'body','leather','#4e3529')
-    p=path[15]
-    z=strap_depth(p.x,p.y)+.045
-    rectangle_frame('Chest strap / brass buckle',p.x,p.y,z,.145,.105,angle=-.73)
-    p=path[6]
-    rectangle_frame('Chest strap / upper brass buckle',p.x,p.y,strap_depth(p.x,p.y)+.045,
-                    .123,.088,angle=-.73)
-    for side in (-1,1):
-        pts=[]
-        for i,p in enumerate(path):
-            d=(path[min(44,i+1)]-path[max(0,i-1)]).normalized()
-            x,y=p.x-d.y*side*.058,p.y+d.x*side*.058
-            pts.append((x,y,strap_depth(x,y)+.028))
-        tube('Chest strap / raised edge',pts,.0035,surface='leather',color='#765236',sides=4,steps=44)
 
 
-def build_leg(side):
-    bone='leftLeg' if side<0 else 'rightLeg'
-    rows=[(.70,.12,.13,side*.414,0),(.82,.147,.15,side*.398,.008),
-          (.96,.19,.185,side*.357,.001),(1.15,.205,.205,side*.287,-.025),
-          (1.285,.172,.181,side*.239,-.021)]
-    def sculpt(x,y,z,a):
-        z+=max(0,math.cos(a))**3*(.029*gauss((y-1.01)/.14)+.012*math.cos(a*3))
-        return x,y,z
-    loft('Thigh / quadriceps and inner teardrop',rows,bone,sides=36,steps=27,sculpt=sculpt)
-    cx=side*.457
-    bootrows=[(.044,.204,.32,cx,.094),(.085,.219,.333,cx,.094),(.12,.212,.321,cx,.10),
-              (.22,.199,.294,cx,.081),(.31,.165,.199,cx,.033),(.39,.147,.151,cx,.005),
-              (.56,.151,.16,cx,-.009),(.70,.168,.174,cx,-.012),(.77,.181,.184,cx,-.014)]
-    boot=loft('Boot / fitted layered leather',bootrows,bone,'leather','#3c2c25',sides=32,steps=30)
-    band('Boot / dark outsole',.068,.219,.334,cx,.094,.041,bone,'#292720')
-    band('Boot / sole welt',.104,.214,.327,cx,.094,.013,bone,'#6c5942')
-    for y,rx,rz,cz,h in [(.72,.199,.206,-.009,.065),(.43,.174,.185,.004,.073),
-                         (.33,.18,.215,.021,.072)]:
-        band('Boot / rolled cuff' if y>.6 else 'Boot / overlapping ankle strap',y,rx,rz,cx,cz,h,bone,
-             '#684a33',tilt=side*.027)
-        stud('Boot / strap fastener',(cx+side*.126,y,.145),bone,.013)
-    toe=ellipsoid('Boot / rounded charcoal toe cap',(cx,.193,.256),(.222,.101,.217),bone,
-                  'iron','#42444d',sides=28,rings=14)
-    # Knee armor wraps around the front, with a broad raised crown and a beveled perimeter.
-    kx=side*.397
-    outline=[(kx-.126,.96,.141),(kx+.125,.952,.141),(kx+.166,.856,.174),
-             (kx+.124,.751,.172),(kx+.024,.724,.184),(kx-.112,.743,.161),(kx-.16,.842,.164)]
-    plate('Knee / forged convex guard',outline,(kx,.838,.257),bone,color='#3c4049',thickness=.024,rings=5)
-    rim('Knee / raised bevel',outline,bone,color='#796f5f',radius=.0065)
-    # The stance is authored into the asset so a neutral joint transform does not alter its silhouette.
-    for obj in [o for o in MODELS if o['creature_bone']==bone]:
-        for vertex in obj.data.vertices:
-            p=game(vertex.co)
-            angle=side*.14*max(0,min(1,(.95-p.y)/.55))
-            x,z=p.x-cx,p.z-.01
-            p.x=cx+x*math.cos(angle)+z*math.sin(angle)
-            p.z=.01-x*math.sin(angle)+z*math.cos(angle)
-            vertex.co=world(p)
-        obj.data.update()
 
 
 def paint_models():
@@ -676,9 +341,13 @@ def paint_models():
         surface=obj['creature_surface']
         base=rgb(obj['paint_color'])
         attr=obj.data.color_attributes.get('Paint') or obj.data.color_attributes.new(name='Paint',type='FLOAT_COLOR',domain='POINT')
+        if len(obj.data.vertices)>20000:print('PAINT_MESH',obj.name,len(obj.data.vertices),flush=True)
+        # Writing color attributes dirties Blender's derived normals. Cache them
+        # first so a full sculpt does not recalculate all normals per vertex.
+        normals=[v.normal.normalized().copy() for v in obj.data.vertices]
         for vertex in obj.data.vertices:
             p=game(vertex.co)
-            n=vertex.normal.normalized()
+            n=normals[vertex.index]
             tangent=n.cross(Vector((0,0,1)) if abs(n.z)<.9 else Vector((0,1,0))).normalized()
             bitangent=n.cross(tangent)
             shade=1
@@ -718,49 +387,8 @@ def paint_models():
             uv.data[loop.index].uv=(math.atan2(p.x,p.z)/math.tau+.5,p.y/3)
 
 
-def optimize_models():
-    """Keep facial forms and fists; simplify dense clothing grids and curved trim offline."""
-    def count(obj):
-        obj.data.calc_loop_triangles()
-        return len(obj.data.loop_triangles)
-    print('ORC_TOPOLOGY_BEFORE',sum(count(o) for o in MODELS),flush=True)
-    for obj in MODELS:
-        triangles=count(obj)
-        if triangles<100:
-            continue
-        ratio=.94 if obj.name.startswith(('Head /','Arm and fist')) else .48
-        bpy.ops.object.select_all(action='DESELECT')
-        obj.select_set(True)
-        bpy.context.view_layer.objects.active=obj
-        mod=obj.modifiers.new('Offline game reduction','DECIMATE')
-        mod.ratio=ratio
-        bpy.ops.object.modifier_apply(modifier=mod.name)
-    print('ORC_TOPOLOGY_AFTER',sum(count(o) for o in MODELS),flush=True)
 
 
-def fit_reference_proportions():
-    head_prefixes=('Head /','Ear /','Eye /','Nose /','Face /','Tusk /','Mouth /','Chin /')
-    for obj in MODELS:
-        for vertex in obj.data.vertices:
-            p=game(vertex.co)
-            if obj.name.startswith(head_prefixes):
-                p.x*=.91
-                p.y=2.49+(p.y-2.49)*.95
-            elif obj.name.startswith('Hair /'):
-                p.x*=.87
-                p.y-=.035
-            if obj['creature_bone'] in ('leftLeg','rightLeg'):
-                # Preserve sole/toe volume while lowering the knee and shortening the shaft.
-                if p.y>.32:
-                    t=min(1,(p.y-.32)/.40)
-                    fade=max(0,min(1,(1.27-p.y)/.31)) if p.y>.96 else 1
-                    p.y-=.14*(t*t*(3-2*t))*fade
-            if obj['creature_bone']=='rightArm':
-                p.x-=.065
-            elif obj['creature_bone']=='leftArm':
-                p.x-=.025
-            vertex.co=world(p)
-        obj.data.update()
 
 
 def create_rig():
@@ -788,7 +416,31 @@ def create_rig():
     return rig
 
 
+def clean_export_slivers():
+    """Remove only triangles that collapse in the actual exported coordinates."""
+    def area_zero(a,b,c):
+        u=tuple(b[i]-a[i] for i in range(3));v=tuple(c[i]-a[i] for i in range(3))
+        return (u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0])==(0,0,0)
+    for obj in MODELS:
+        pivot=Vector(PIVOTS[obj['creature_bone']])
+        def packed_position(co):
+            p=game(obj.matrix_world@co)-pivot
+            return tuple(struct.unpack('<f',struct.pack('<f',round(c*10000)/10000))[0] for c in p)
+        points=[packed_position(v.co) for v in obj.data.vertices]
+        obj.data.calc_loop_triangles()
+        bad={t.polygon_index for t in obj.data.loop_triangles
+             if area_zero(*(points[i] for i in t.vertices))}
+        if not bad:continue
+        bm=bmesh.new();bm.from_mesh(obj.data);bm.faces.ensure_lookup_table()
+        bmesh.ops.triangulate(bm,faces=[bm.faces[i] for i in bad])
+        collapsed=[f for f in bm.faces if len(f.verts)==3 and area_zero(*(packed_position(v.co) for v in f.verts))]
+        bmesh.ops.delete(bm,geom=collapsed,context='FACES_ONLY')
+        bm.to_mesh(obj.data);bm.free();obj.data.update()
+        print('EXPORT_SLIVERS_REMOVED',obj.name,len(collapsed),flush=True)
+
+
 def export_batches():
+    clean_export_slivers()
     batches={}
     for obj in MODELS:
         obj.data.calc_loop_triangles()
@@ -798,17 +450,23 @@ def export_batches():
         batch=batches.setdefault(key,{'vertices':{},'positions':[],'normals':[],'colors':[],'uv':[],'indices':[]})
         colors=obj.data.color_attributes['Paint']
         pivot=Vector(PIVOTS[bone])
+        # Snapshot Blender's derived corner-normal collection once. Requesting
+        # the RNA collection per triangle corner is costly on dense sculpt meshes.
+        normals=[tuple(round(x*127) for x in game(normal_matrix@n.vector).normalized())
+                 for n in obj.data.corner_normals]
+        fields=[]
+        for vertex in obj.data.vertices:
+            p=game(obj.matrix_world@vertex.co)-pivot
+            fields.append((tuple(round(x*10000) for x in p),
+                           (round((math.atan2(p.x,p.z)/math.tau+.5)*10000),round(p.y/3*10000))))
+        pigments=[tuple(round(max(0,min(1,x))*255) for x in c.color[:3]) for c in colors.data]
+        loop_vertices=[loop.vertex_index for loop in obj.data.loops]
         for tri in obj.data.loop_triangles:
             for loop_id in tri.loops:
-                loop=obj.data.loops[loop_id]
-                v=obj.data.vertices[loop.vertex_index]
-                p=game(obj.matrix_world@v.co)-pivot
-                n=game(normal_matrix@obj.data.corner_normals[loop_id].vector).normalized()
-                c=colors.data[v.index if colors.domain=='POINT' else loop_id].color
-                position=tuple(round(x*10000) for x in p)
-                normal=tuple(round(x*127) for x in n)
-                color=tuple(round(max(0,min(1,x))*255) for x in c[:3])
-                u=(round((math.atan2(p.x,p.z)/math.tau+.5)*10000),round(p.y/3*10000))
+                vertex_index=loop_vertices[loop_id]
+                position,u=fields[vertex_index]
+                normal=normals[loop_id]
+                color=pigments[vertex_index if colors.domain=='POINT' else loop_id]
                 vertex_key=position+normal+color+u
                 if vertex_key not in batch['vertices']:
                     batch['vertices'][vertex_key]=len(batch['positions'])//3
@@ -821,12 +479,10 @@ def export_batches():
         return base64.b64encode(struct.pack('<'+fmt*len(values),*values)).decode('ascii')
     packed={}
     for key,b in batches.items():
-        if len(b['positions'])//3>65535: raise RuntimeError('16-bit batch vertex budget exceeded: '+key)
-        packed[key]={k:encoded(b[k],fmt) for k,fmt in [('positions','h'),('normals','b'),('colors','B'),('uv','h'),('indices','H')]}
+        packed[key]={k:encoded(b[k],fmt) for k,fmt in [('positions','h'),('normals','b'),('colors','B'),('uv','h'),('indices','I')]}
     triangles=sum(len(b['indices'])//3 for b in batches.values())
-    if triangles>40000: raise RuntimeError('Orc triangle budget exceeded: '+str(triangles))
     DATA.write_text(json.dumps({'source':'assets/enemies/orc.blend','blenderVersion':bpy.app.version_string,
-        'pivots':PIVOTS,'triangles':triangles,'batches':packed},indent=2)+'\n',encoding='utf-8')
+        'pivots':PIVOTS,'indexComponentType':5125,'triangles':triangles,'batches':packed},indent=2)+'\n',encoding='utf-8')
     print('ORC_EXPORT',json.dumps({'triangles':triangles,'batches':len(packed),'payloadBytes':DATA.stat().st_size}),flush=True)
     bpy.ops.object.select_all(action='DESELECT')
     for obj in MODELS:obj.select_set(True)
@@ -903,47 +559,17 @@ def setup_studio():
 
 
 def main():
-    parser=argparse.ArgumentParser()
-    parser.add_argument('--export-only',action='store_true')
-    parser.add_argument('--no-render',action='store_true')
-    args=parser.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
-    for path in (SOURCE.parent,RENDERS):path.mkdir(parents=True,exist_ok=True)
-    if args.export_only:
+    args = sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else []
+    if '--export-only' in args:
         MODELS.extend(o for o in bpy.data.objects if o.type=='MESH' and 'creature_bone' in o)
         export_batches()
         return
-    bpy.ops.object.select_all(action='SELECT')
-    bpy.ops.object.delete(use_global=False)
-    torso=build_body()
-    build_head()
-    build_hair()
-    build_arm(-1)
-    build_arm(1)
-    build_armor()
-    build_leg(-1)
-    build_leg(1)
-    build_clothes(torso)
-    print('ORC_SCULPT',len(MODELS),'editable objects',flush=True)
-    fit_reference_proportions()
-    optimize_models()
-    paint_models()
-    create_rig()
-    camera=setup_studio()
-    bpy.context.scene['art_reference']='Supplied HEXFALL orc concept, front / three-quarter / rear / face'
-    bpy.context.scene['game_export']='src/game/orc-blender-data.json and public/models/orc.glb'
-    export_batches()
-    bpy.ops.wm.save_as_mainfile(filepath=str(SOURCE),compress=True)
-    if not args.no_render:
-        for name,location,target,scale in [
-            ('front',(0,1.5,9),(0,1.5,0),3.35),
-            ('quarter',(3.8,2.7,8),(0,1.5,0),3.35),
-            ('face',(0,2.49,8),(0,2.49,0),.97),
-            ('rear',(0,1.5,-9),(0,1.5,0),3.35)]:
-            set_camera(camera,location,target)
-            camera.data.ortho_scale=scale
-            bpy.context.scene.render.filepath=str(RENDERS/(name+'.png'))
-            bpy.ops.render.render(write_still=True)
-    print('ORC_DONE',str(SOURCE),flush=True)
+    import importlib.util
+    sys.dont_write_bytecode = True
+    spec = importlib.util.spec_from_file_location('orc_replacement', ROOT/'scripts/build-orc-replacement.py')
+    replacement = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(replacement)
+    replacement.main()
 
 
 if __name__=='__main__':

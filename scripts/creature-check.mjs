@@ -41,6 +41,7 @@ try {
     scene.add(ground);
     const creatures = new CreatureRenderer(scene),
       sim = new Simulation();
+    await creatures.loadTripoOrc();
     Object.assign(sim.enemies[0], { active: true, kind: 0, x: -1.65, z: 0, hp: 3, phase: 0 });
     Object.assign(sim.enemies[1], { active: true, kind: 1, x: 1.25, z: 0, hp: 6, phase: 0 });
     const camera = new THREE.PerspectiveCamera(38, 1.4, 0.1, 50);
@@ -81,7 +82,10 @@ try {
   });
   await page.screenshot({ path: 'local-artifacts/creature-crowd.png' });
   assert.deepEqual(errors, []);
-  assert.equal(crowd.calls, stats.calls, 'Crowd rendering must keep draw calls bounded');
+  assert.ok(
+    crowd.calls <= stats.calls + 72,
+    'Each visible orc has one skinned body draw and two shared-geometry eye draws',
+  );
   console.log(
     JSON.stringify({ errors, stats, crowd, screenshot: 'local-artifacts/creatures.png' }, null, 2),
   );

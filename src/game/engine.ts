@@ -93,7 +93,20 @@ export class Engine {
     this.projectiles.name = 'wizard-projectiles';
     this.trails.name = 'spell-trails';
     this.creatures = new CreatureRenderer(this.scene);
+    void this.creatures.loadTripoOrc().catch((error) => {
+      if (this.disposed) return;
+      console.error('Tripo orc could not load.', error);
+      this.pause();
+      this.host.dispatchEvent(
+        new CustomEvent('engine-error', {
+          detail: 'The orc model could not load. Reload the page to try again.',
+        }),
+      );
+    });
     this.scene.add(this.camera);
+    const faceFill = new THREE.PointLight('#d9e5dc', 3, 6, 2);
+    faceFill.position.set(0, 0.55, -0.2);
+    this.camera.add(faceFill);
     this.camera.add(this.staff);
     this.crystal = buildStaff(this.staff);
     const signal = this.abort.signal;
@@ -335,7 +348,7 @@ export class Engine {
     }
     this.staff.visible = this.sim.phase !== 'ready';
     this.staff.position.y =
-      -0.68 +
+      -0.86 +
       Math.sin(this.sim.time * 3) * 0.015 +
       (this.input.fire && this.sim.shootCooldown > 0.08 ? -0.035 : 0);
     this.crystal.rotation.y += dt;
@@ -394,6 +407,7 @@ export class Engine {
   }
   dispose() {
     this.disposed = true;
+    this.creatures.dispose();
     cancelAnimationFrame(this.frame);
     this.abort.abort();
     this.resizeObserver.disconnect();

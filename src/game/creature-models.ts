@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { sculptedGeometry } from './creature-sculpt';
-import { buildBlenderOrcGeometries } from './creature-blender';
 
 export type CreatureBone = 'body' | 'leftArm' | 'rightArm' | 'leftLeg' | 'rightLeg' | 'slime';
 export type CreatureSurface = 'skin' | 'iron' | 'leather' | 'ivory' | 'dark' | 'eye' | 'gel';
@@ -8,8 +7,7 @@ type XYZ = [number, number, number];
 
 const gaussian = (value: number) => Math.exp(-value * value);
 
-export function buildCreatureGeometries() {
-  const groups = buildBlenderOrcGeometries();
+export function buildCreatureGeometries(groups = new Map<string, THREE.BufferGeometry[]>()) {
   const faceRay = new THREE.Raycaster();
   const add = (
     bone: CreatureBone,

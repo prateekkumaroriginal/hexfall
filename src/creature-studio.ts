@@ -22,6 +22,7 @@ const rim = new THREE.DirectionalLight('#c3ddeb', 1.3);
 rim.position.set(3, 3, -3);
 scene.add(rim);
 const creatures = new CreatureRenderer(scene);
+await creatures.loadTripoOrc();
 const sim = new Simulation();
 sim.enemies.forEach((enemy) => {
   enemy.active = false;
@@ -29,10 +30,20 @@ sim.enemies.forEach((enemy) => {
 Object.assign(sim.enemies[0], { active: true, kind: 1, x: 0, z: 0, phase: 0, spawnRemaining: 0 });
 const camera = new THREE.OrthographicCamera();
 let view = 'front';
-const parts = scene.children.filter(
-  (o): o is THREE.InstancedMesh =>
-    o instanceof THREE.InstancedMesh && o.name.startsWith('creature-'),
-);
+creatures.update(sim.enemies, 0, 0, 10);
+const parts: THREE.Mesh[] = [];
+scene.traverse((o) => {
+  if (o instanceof THREE.Mesh && o.name.startsWith('creature-')) parts.push(o);
+});
+function visible(part: THREE.Mesh) {
+  if (part instanceof THREE.InstancedMesh) return part.count > 0;
+  for (let o: THREE.Object3D | null = part; o; o = o.parent) if (!o.visible) return false;
+  return true;
+}
+function partMatrix(part: THREE.Mesh, matrix: THREE.Matrix4) {
+  if (part instanceof THREE.InstancedMesh) part.getMatrixAt(0, matrix);
+  else matrix.copy(part.matrixWorld);
+}
 const materials = new Set(parts.map((part) => part.material as THREE.MeshStandardMaterial));
 const original = new Map(
   [...materials].map((m) => [m, { map: m.map, vertexColors: m.vertexColors }]),
@@ -117,11 +128,11 @@ function render() {
   const projected = new THREE.Box2();
   const projectedPoint = new THREE.Vector3();
   const projectedMatrix = new THREE.Matrix4();
-  for (const part of parts.filter((p) => p.count)) {
-    part.getMatrixAt(0, projectedMatrix);
+  for (const part of parts.filter(visible)) {
+    partMatrix(part, projectedMatrix);
     const vertices = part.geometry.getAttribute('position');
     for (let i = 0; i < vertices.count; i++) {
-      projectedPoint.fromBufferAttribute(vertices, i).applyMatrix4(projectedMatrix).project(camera);
+      part.getVertexPosition(i, projectedPoint).applyMatrix4(projectedMatrix).project(camera);
       projected.expandByPoint(new THREE.Vector2(projectedPoint.x, projectedPoint.y));
     }
   }
@@ -168,11 +179,14 @@ function render() {
     );
   }
   const bounds = new THREE.Box3();
-  for (const part of parts.filter((p) => p.count)) {
+  for (const part of parts.filter(visible)) {
     const matrix = new THREE.Matrix4();
-    part.getMatrixAt(0, matrix);
+    partMatrix(part, matrix);
     part.geometry.computeBoundingBox();
-    bounds.union(part.geometry.boundingBox!.clone().applyMatrix4(matrix));
+    if (part instanceof THREE.SkinnedMesh) {
+      part.computeBoundingBox();
+      bounds.union(part.boundingBox!.clone().applyMatrix4(matrix));
+    } else bounds.union(part.geometry.boundingBox!.clone().applyMatrix4(matrix));
   }
   document.querySelector('#stats')!.textContent =
     `${renderer.info.render.triangles.toLocaleString()} triangles · ${renderer.info.render.calls} calls\nBounds ${bounds
@@ -184,12 +198,12 @@ function render() {
   const profile = Array.from({ length: 12 }, () => ({ minX: Infinity, maxX: -Infinity }));
   const position = new THREE.Vector3(),
     matrix = new THREE.Matrix4();
-  for (const part of parts.filter((p) => p.count)) {
-    part.getMatrixAt(0, matrix);
+  for (const part of parts.filter(visible)) {
+    partMatrix(part, matrix);
     const vertices = part.geometry.getAttribute('position');
     const world = new Float32Array(vertices.count * 3);
     for (let i = 0; i < vertices.count; i++) {
-      position.fromBufferAttribute(vertices, i).applyMatrix4(matrix);
+      part.getVertexPosition(i, position).applyMatrix4(matrix);
       position.toArray(world, i * 3);
     }
     const indices = part.geometry.index!;
@@ -197,7 +211,18 @@ function render() {
     // silhouette where the decimator left long triangles on smooth surfaces.
     for (let t = 0; t < indices.count; t += 3) {
       const ids = [indices.getX(t), indices.getX(t + 1), indices.getX(t + 2)];
-      for (let band = 0; band < 12; band++) {
+      const ys = ids.map((id) => world[id * 3 + 1]);
+      const firstBand = Math.max(
+        0,
+        Math.ceil(((Math.min(ys[0], ys[1], ys[2]) - bounds.min.y) * 12) / size.y - 0.5 - 1e-9),
+      );
+      const lastBand = Math.min(
+        11,
+        Math.floor(((Math.max(ys[0], ys[1], ys[2]) - bounds.min.y) * 12) / size.y - 0.5 + 1e-9),
+      );
+      // Most sculpt triangles span none of the twelve measurement planes.
+      // Visit only intersecting planes while retaining the exact edge test.
+      for (let band = firstBand; band <= lastBand; band++) {
         const y = bounds.min.y + ((band + 0.5) * size.y) / 12;
         for (let edge = 0; edge < 3; edge++) {
           const a = ids[edge] * 3,

@@ -4,6 +4,8 @@ import {
   SLIME_HEALTH,
   SLIME_SPAWN_DURATION,
   ORC_HEALTH,
+  ORC_ATTACK_COOLDOWN,
+  ORC_PUNCH_RECOVERY,
   OBSTACLES,
   TREE_OBSTACLES,
   WORLD_OBSTACLES,
@@ -17,6 +19,42 @@ const advance = (sim: Simulation, seconds: number, input = blankInput()) => {
   for (let i = 0; i < seconds * 60; i++) sim.step(1 / 60, input);
 };
 describe('combat simulation', () => {
+  it('keeps the orc planted through punch recovery, then resumes pursuit', () => {
+    const sim = new Simulation();
+    sim.reset();
+    sim.waveWait = 1000;
+    const orc = sim.enemies[0];
+    Object.assign(orc, {
+      active: true,
+      kind: 1,
+      hp: ORC_HEALTH,
+      x: sim.x,
+      z: sim.z - 1.5,
+      windup: 0,
+      cooldown: ORC_ATTACK_COOLDOWN,
+    });
+    const start = { x: orc.x, z: orc.z };
+    advance(sim, ORC_PUNCH_RECOVERY - 0.05);
+    expect(orc.x).toBe(start.x);
+    expect(orc.z).toBe(start.z);
+    advance(sim, 0.1);
+    expect(Math.hypot(orc.x - start.x, orc.z - start.z)).toBeGreaterThan(0.01);
+  });
+  it.each([0.1, 0.9])('starts with exactly one slime and one orc for random %f', (random) => {
+    const sim = new Simulation(() => random);
+    sim.reset();
+    sim.waveWait = 0;
+    sim.step(1 / 60, blankInput());
+    expect(sim.wave).toBe(1);
+    expect(sim.remaining).toBe(2);
+    advance(sim, 2.1);
+    const enemies = sim.enemies.filter((enemy) => enemy.active);
+    expect(enemies.map((enemy) => enemy.kind).sort()).toEqual([0, 1]);
+    expect(sim.remaining).toBe(0);
+    expect(sim.wave).toBe(1);
+    expect(enemies.find((enemy) => enemy.kind === 0)!.hp).toBe(SLIME_HEALTH);
+    expect(enemies.find((enemy) => enemy.kind === 1)!.hp).toBe(ORC_HEALTH);
+  });
   it('does not simulate before start or while paused', () => {
     const sim = new Simulation();
     advance(sim, 3);
@@ -382,6 +420,23 @@ describe('combat simulation', () => {
       expect(Math.abs(enemy.z)).toBeLessThanOrEqual(ARENA_HALF_DEPTH - 0.6);
     }
   });
+  it('keeps the camera outside an orc while allowing retreat and melee damage', () => {
+    const sim = new Simulation();
+    sim.reset();
+    sim.remaining = 1;
+    sim.spawnCooldown = 100;
+    const orc = sim.enemies[0];
+    Object.assign(orc, { active: true, kind: 1, hp: 6, x: 0, z: 7.5 });
+    const input = { ...blankInput(), forward: 1 };
+    for (let i = 0; i < 40; i++) {
+      sim.step(1 / 60, input);
+      expect(Math.hypot(sim.x - orc.x, sim.z - orc.z)).toBeGreaterThan(1.3);
+    }
+    expect(sim.hp).toBeLessThan(100);
+    const before = sim.z;
+    sim.step(1 / 60, { ...input, forward: -1 });
+    expect(sim.z).toBeGreaterThan(before);
+  });
   it('hits only the nearest enemy along the crosshair', () => {
     const sim = new Simulation();
     sim.reset();
@@ -452,7 +507,7 @@ describe('combat simulation', () => {
       sim.waveWait = 0;
       sim.step(1 / 60, blankInput());
       expect(sim.wave).toBe(wave);
-      expect(sim.remaining).toBe(7 + wave * 5);
+      expect(sim.remaining).toBe(wave === 1 ? 2 : 7 + wave * 5);
       sim.remaining = 0;
     }
     sim.waveWait = 0;

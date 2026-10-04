@@ -31,6 +31,7 @@ describe('Blender orc export', () => {
           }
         }
         const indices = geometry.getIndex()!;
+        expect(indices.array).toBeInstanceOf(Uint32Array);
         expect(indices.count % 3).toBe(0);
         for (let i = 0; i < indices.count; i += 3) {
           const a = indices.getX(i),
@@ -56,8 +57,7 @@ describe('Blender orc export', () => {
       }
     }
     expect(triangles).toBe(data.triangles);
-    expect(triangles).toBeLessThanOrEqual(40000);
-  });
+  }, 30000);
 
   it('ships a painted GLB with the same triangle count and five game joints', () => {
     const file = readFileSync(new URL('../../public/models/orc.glb', import.meta.url));

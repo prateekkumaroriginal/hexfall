@@ -17,6 +17,9 @@ export const SLIME_HEALTH = 2;
 export const SLIME_SPEED = 1.04625;
 export const SLIME_SPAWN_DURATION = 2.5;
 export const ORC_HEALTH = SLIME_HEALTH * 2;
+export const ORC_ATTACK_WINDUP = 0.55;
+export const ORC_ATTACK_COOLDOWN = 1.25;
+export const ORC_PUNCH_RECOVERY = 0.45;
 // A puddle spreads first, then rises into the full creature. Shared by rendering and hit detection.
 export function slimeSpawnScale(remaining: number, vertical = false) {
   const progress = Math.max(0, Math.min(1, 1 - remaining / SLIME_SPAWN_DURATION));
@@ -167,9 +170,9 @@ export class Simulation {
     const aim = Math.max(1.5, this.traceDistance);
     const p = this.projectiles.find((p) => !p.active);
     if (!p) return;
-    p.x = this.x + cy * 0.65 + sy * sp * 0.04 + rx * 1.04;
-    p.y = 1.6 + cp * 0.04 + ry * 1.04;
-    p.z = this.z - sy * 0.65 + cy * sp * 0.04 + rz * 1.04;
+    p.x = this.x + cy * 0.88 - sy * sp * 0.14 + rx * 1.04;
+    p.y = 1.6 - cp * 0.14 + ry * 1.04;
+    p.z = this.z - sy * 0.88 - cy * sp * 0.14 + rz * 1.04;
     p.x = Math.max(-ARENA_HALF_WIDTH + 0.01, Math.min(ARENA_HALF_WIDTH - 0.01, p.x));
     p.z = Math.max(-ARENA_HALF_DEPTH + 0.01, Math.min(ARENA_HALF_DEPTH - 0.01, p.z));
     const dx = this.x + rx * aim - p.x,
@@ -318,7 +321,14 @@ export class Simulation {
       side >= 2
         ? (side === 2 ? -1 : 1) * (ARENA_HALF_DEPTH - 0.8)
         : along * (ARENA_HALF_DEPTH - 1.5);
-    const kind = this.wave > 1 && this.random() > 0.6 ? 1 : 0;
+    const kind =
+      this.wave === 1
+        ? this.remaining === 1
+          ? 1
+          : 0
+        : this.wave > 1 && this.random() > 0.6
+          ? 1
+          : 0;
     const radius = kind ? 0.65 : 0.85;
     const initialAlong = side < 2 ? z : x;
     // Keep birth puddles and orcs out of trunks, including trees beside the spawn edges.
@@ -391,6 +401,17 @@ export class Simulation {
         this.z = p.z + (d ? dz / d : 0) * r;
       }
     }
+    // Keep the first-person camera outside the orc's torso during melee.
+    for (const enemy of this.enemies) {
+      if (!enemy.active || !enemy.kind || enemy.spawnRemaining > 0) continue;
+      const dx = this.x - enemy.x,
+        dz = this.z - enemy.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance < 1.35) {
+        this.x = enemy.x + (distance ? dx / distance : 0) * 1.35;
+        this.z = enemy.z + (distance ? dz / distance : 1) * 1.35;
+      }
+    }
     if (input.fire && this.shootCooldown <= 0) {
       this.shootCooldown = 0.13;
       this.cast(input);
@@ -404,7 +425,7 @@ export class Simulation {
           return;
         }
         this.wave++;
-        this.remaining = 7 + this.wave * 5;
+        this.remaining = this.wave === 1 ? 2 : 7 + this.wave * 5;
         this.hp = Math.min(100, this.hp + 15);
         this.waveWait = 3;
       }
@@ -431,10 +452,10 @@ export class Simulation {
         e.windup = Math.max(0, e.windup - dt);
         if (e.windup === 0) {
           if (d < reach + 0.2) this.damage(e.kind ? 18 : 10);
-          e.cooldown = e.kind ? 1.25 : 0.9;
+          e.cooldown = e.kind ? ORC_ATTACK_COOLDOWN : 0.9;
         }
       } else if (d < reach && e.cooldown === 0) {
-        e.windup = e.kind ? 0.55 : 0.4;
+        e.windup = e.kind ? ORC_ATTACK_WINDUP : 0.4;
       }
       let vx = dx / d,
         vz = dz / d;
@@ -451,7 +472,10 @@ export class Simulation {
       }
       const moveLength = Math.hypot(vx, vz) || 1;
       const slimeSpeed = SLIME_SPEED + this.wave * 0.062;
-      const speed = e.windup > 0 || d < reach * 0.65 ? 0 : slimeSpeed * (e.kind ? 0.8 : 1);
+      const recoveringPunch = e.kind && e.cooldown > ORC_ATTACK_COOLDOWN - ORC_PUNCH_RECOVERY;
+      const standOff = e.kind ? 1.45 : reach * 0.65;
+      const speed =
+        e.windup > 0 || recoveringPunch || d < standOff ? 0 : slimeSpeed * (e.kind ? 0.8 : 1);
       e.x += (vx / moveLength) * speed * dt;
       e.z += (vz / moveLength) * speed * dt;
     }

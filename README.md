@@ -15,6 +15,8 @@ Open the local URL printed by Vite. Click **PLAY** to capture the mouse. A deskt
 
 Render scale starts at 100% and stays at the selected value during gameplay. In **Settings**, choose **Render scale** from 25%, 50%, 75%, or 100%. Lower values can improve frame rate at the cost of image clarity. The scale applies to the selected **Render quality** preset and persists locally. Existing saved settings use 100% until you choose another value.
 
+Field of view defaults to 90° horizontally at 16:9, reducing stretching at the edges. The **Field of view** slider in **Settings** ranges from 75° to 110° and persists locally. Wider windows retain the selected horizontal angle; narrower windows retain the 16:9 vertical angle. The staff keeps its screen framing when FOV changes. Existing saved settings use the new 90° default.
+
 | Control                     | Action                      |
 | --------------------------- | --------------------------- |
 | WASD / arrows               | Move                        |

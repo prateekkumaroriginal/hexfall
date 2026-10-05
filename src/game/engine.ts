@@ -6,6 +6,7 @@ import { Environment } from './environment';
 import { buildStaff } from './staff';
 import { renderPixelRatio } from './performance';
 import { FrameDiagnostics } from './diagnostics';
+import { verticalFieldOfView } from './camera';
 import type { Settings } from '../settings';
 
 export class Engine {
@@ -13,7 +14,7 @@ export class Engine {
   readonly input = blankInput();
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(78, 1, 0.08, 500);
+  private camera = new THREE.PerspectiveCamera(60, 1, 0.08, 500);
   private abort = new AbortController();
   private resizeObserver: ResizeObserver;
   private frame = 0;
@@ -30,6 +31,7 @@ export class Engine {
   private axis = new THREE.Vector3(0, 1, 0);
   private creatures: CreatureRenderer;
   private staff = new THREE.Group();
+  private staffView = new THREE.Group();
   private crystal: THREE.Mesh;
   private mouseFire = false;
   private audio?: AudioContext;
@@ -107,7 +109,8 @@ export class Engine {
     const faceFill = new THREE.PointLight('#d9e5dc', 3, 6, 2);
     faceFill.position.set(0, 0.55, -0.2);
     this.camera.add(faceFill);
-    this.camera.add(this.staff);
+    this.camera.add(this.staffView);
+    this.staffView.add(this.staff);
     this.crystal = buildStaff(this.staff);
     const signal = this.abort.signal;
     document.addEventListener('pointerlockchange', this.lockChange, { signal });
@@ -188,7 +191,11 @@ export class Engine {
     );
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
+    this.camera.fov = verticalFieldOfView(this.settings.fieldOfView, this.camera.aspect);
     this.camera.updateProjectionMatrix();
+    // Preserve the staff's screen size and position as the world FOV changes.
+    const staffScale = Math.tan((this.camera.fov * Math.PI) / 360) / Math.tan((78 * Math.PI) / 360);
+    this.staffView.scale.set(staffScale, staffScale, 1);
   };
   async start() {
     if (this.disposed) return;

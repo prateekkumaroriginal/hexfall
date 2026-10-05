@@ -3,6 +3,7 @@ import type { Engine } from './game/engine';
 import type { Settings } from './settings';
 import {
   DEFAULT_SETTINGS,
+  FIELD_OF_VIEW_SETTINGS,
   parseSettings,
   RENDER_SCALE_SETTINGS,
   SETTINGS_STORAGE_KEY,
@@ -305,10 +306,11 @@ export default function App() {
       {panel !== 'none' ? (
         <PanelOverlay className="has-[.status-scrollbar]:overflow-hidden">
           <PanelContent
-            className={
+            className={cn(
               'has-[.status-scrollbar]:m-auto has-[.status-scrollbar]:flex' +
-              ' has-[.status-scrollbar]:max-h-full has-[.status-scrollbar]:flex-col'
-            }
+                ' has-[.status-scrollbar]:max-h-full has-[.status-scrollbar]:flex-col',
+              panel === 'settings' && 'box-border max-h-full overflow-y-auto',
+            )}
             role="dialog"
             aria-modal="true"
             aria-labelledby="panel-title"
@@ -364,6 +366,26 @@ export default function App() {
                   </div>
                   <p id="render-scale-description">{RENDER_SCALE_SETTINGS.labels.description}</p>
                 </fieldset>
+                <label className="mt-[22px] block text-[13px]">
+                  Field of view{' '}
+                  <span className="float-right text-primary">{settings.fieldOfView}°</span>
+                  <input
+                    className="mx-0 my-5 block w-full accent-primary"
+                    type="range"
+                    min={FIELD_OF_VIEW_SETTINGS.min}
+                    max={FIELD_OF_VIEW_SETTINGS.max}
+                    step="1"
+                    value={settings.fieldOfView}
+                    aria-describedby="field-of-view-description"
+                    onChange={(e) => {
+                      const fieldOfView = Number(e.target.value);
+                      setSettings((s) => ({ ...s, fieldOfView }));
+                    }}
+                  />
+                </label>
+                <p id="field-of-view-description">
+                  Lower values reduce stretching at the edges. Higher values show more of the arena.
+                </p>
                 <label className="mt-[22px] block text-[13px]">
                   Mouse sensitivity{' '}
                   <span className="float-right text-primary">

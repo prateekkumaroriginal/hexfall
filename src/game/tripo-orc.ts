@@ -130,7 +130,7 @@ export class TripoOrcRenderer {
     orc.punch.setEffectiveWeight(attackWeight);
     orc.punch.time = THREE.MathUtils.clamp(attackTime, 0, orc.punch.getClip().duration - 0.001);
     orc.mixer.update(0);
-    orc.freeArm.apply();
+    orc.freeArm.apply(attackTime);
     // Simulation time freezes breathing/blinks while paused. Each orc has its own rhythm.
     const expressionTime = time + slot * 0.73;
     const blinkTime = expressionTime % 9.1;

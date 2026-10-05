@@ -212,6 +212,7 @@ colors = np.empty(width*height*4, dtype=np.float32)
 color_image.pixels.foreach_get(colors)
 armor = set()
 strap = set()
+spikes = set()
 uv = mesh.data.uv_layers.active.data
 for loop in mesh.data.loops:
     vertex = mesh.data.vertices[loop.vertex_index]
@@ -226,7 +227,14 @@ for loop in mesh.data.loops:
         leather = r > g*1.12 and r > b*1.25
         ivory = r > g*1.02 and b > g*.60 and r > .4
         head_weight = next((g.weight for g in vertex.groups if g.group == mesh.vertex_groups['head'].index), 0)
-        on_strap = 1.40 < y < 2.24 and z > .23 and abs(x-(.45-.975*(y-1.30))) < .20
+        # Ivory can also satisfy the brown-leather test in its shaded areas.
+        # Resolve spikes before the diagonal strap so their bases cannot bend
+        # with the chest while their tips follow the rigid shoulder plate.
+        if x < -.30 and y > 2.05 and ivory and head_weight < .45:
+            spikes.add(vertex.index)
+            armor.add(vertex.index)
+            continue
+        on_strap = x > -.32 and 1.40 < y < 2.24 and z > .23 and abs(x-(.45-.975*(y-1.30))) < .20
         if on_strap and (leather or metal > .3):
             strap.add(vertex.index)
         elif .22 < abs(x) < 1.10 and 1.89 < y < 2.63 and (y < 2.28 or abs(x) > .48) and ((head_weight < .45 and (metal > .30 or leather)) or (ivory and (x < -.32 or x > .48))):
@@ -240,6 +248,7 @@ for vertex in mesh.data.vertices:
     x, y, z = vertex.co.x, vertex.co.z, -vertex.co.y
     # Ivory spikes are continuous pieces even where the texture darkens.
     if x < -.30 and y > 2.25 and z < .22:
+        spikes.add(vertex.index)
         replace_weights(vertex, {mesh.vertex_groups['leftShoulderPlate'].index: 1})
 for index in strap:
     replace_weights(mesh.data.vertices[index], {spine_group: 1})
@@ -250,6 +259,15 @@ for edge in mesh.data.edges:
     a, b = edge.vertices
     neighbors[a].add(b)
     neighbors[b].add(a)
+# Include the dark root and UV-border vertices around each ivory spike.
+for _ in range(2):
+    spikes.update(n for i in list(spikes) for n in neighbors[i]
+                  if mesh.data.vertices[n].co.x < -.30 and mesh.data.vertices[n].co.z > 2.05)
+for i in spikes:
+    replace_weights(mesh.data.vertices[i], {mesh.vertex_groups['leftShoulderPlate'].index: 1})
+rigid_left_armor = spikes | {i for i in armor if mesh.data.vertices[i].co.x < -.32}
+for i in rigid_left_armor:
+    replace_weights(mesh.data.vertices[i], {mesh.vertex_groups['leftShoulderPlate'].index: 1})
 weights = [{g.group: g.weight for g in v.groups if g.weight > .000001} for v in mesh.data.vertices]
 seams = {v.index for v in mesh.data.vertices if
          (v.co.x > .4 and 1.5 < v.co.z < 2.45) or
@@ -257,6 +275,8 @@ seams = {v.index for v in mesh.data.vertices if
 for iteration in range(64):
     updated = {}
     for i in seams:
+        if i in rigid_left_armor:
+            continue
         v = mesh.data.vertices[i]
         if v.co.x > 0:
             amount = .65*smooth(.4,.5,v.co.x)*smooth(1.5,1.72,v.co.z)*(1-smooth(2.35,2.45,v.co.z))

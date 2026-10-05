@@ -299,7 +299,7 @@ describe('rigged Tripo orc', () => {
     }
     renderer.dispose();
   });
-  it('raises a fist with a straight wrist, slams down at the melee hit, and leaves the free arm still', async () => {
+  it('raises a fist with a straight wrist, slams down at the melee hit, and barely moves the free arm', async () => {
     const scene = new THREE.Scene(),
       renderer = new TripoOrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
@@ -319,7 +319,7 @@ describe('rigged Tripo orc', () => {
     // Wrist at eye height puts the fist above the face without over-folding the elbow.
     expect(guard.y).toBeGreaterThan(2.4);
     expect(guard.x).toBeGreaterThan(0.6);
-    expect(point('leftHand').distanceTo(freeHand)).toBeLessThan(0.00001);
+    expect(point('leftHand').distanceTo(freeHand)).toBeLessThan(0.025);
     enemy.windup = 0;
     enemy.cooldown = 1.25;
     renderer.update(0, enemy, 0, 0, 0);
@@ -350,7 +350,7 @@ describe('rigged Tripo orc', () => {
       }
       const leftHand = point('leftHand'),
         shoulder = point('leftUpperArm');
-      expect(leftHand.distanceTo(freeHand)).toBeLessThan(0.00001);
+      expect(leftHand.distanceTo(freeHand)).toBeLessThan(0.025);
       const fist = new THREE.Box3();
       for (const index of fistVertices)
         fist.expandByPoint(mesh.getVertexPosition(index, new THREE.Vector3()));
@@ -371,7 +371,7 @@ describe('rigged Tripo orc', () => {
     expect(point('rightHand').distanceTo(restHand)).toBeLessThan(0.00001);
     renderer.dispose();
   });
-  it('keeps the free fist geometry fixed through attack blends and restores its walk afterward', async () => {
+  it('gives the free fist a tiny sway through attack blends and restores its walk afterward', async () => {
     const scene = new THREE.Scene(),
       renderer = new TripoOrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
@@ -390,15 +390,20 @@ describe('rigged Tripo orc', () => {
         sample.push({ index: i, position: mesh.getVertexPosition(i, new THREE.Vector3()) });
     }
     expect(sample.length).toBeGreaterThan(500);
+    let largestSway = 0;
     for (const time of [0, 0.04, 0.12, 0.2, 0.35, 0.55, 0.7, 0.9, 0.99]) {
       enemy.windup = time < 0.55 ? 0.55 - time : 0;
       enemy.cooldown = time >= 0.55 ? 1.8 - time : 0;
       renderer.update(0, enemy, 0, 1.2 + time, 1, 2, 0.4 + time);
-      for (const point of sample)
-        expect(
-          mesh.getVertexPosition(point.index, new THREE.Vector3()).distanceTo(point.position),
-        ).toBeLessThan(0.00001);
+      for (const point of sample) {
+        const sway = mesh
+          .getVertexPosition(point.index, new THREE.Vector3())
+          .distanceTo(point.position);
+        largestSway = Math.max(largestSway, sway);
+        expect(sway).toBeLessThan(0.025);
+      }
     }
+    expect(largestSway).toBeGreaterThan(0.005);
     enemy.windup = 0;
     enemy.cooldown = 0;
     renderer.update(0, enemy, 0, 3, 1, 2, 2);
@@ -413,6 +418,42 @@ describe('rigged Tripo orc', () => {
           .distanceTo(baseline.getVertexPosition(point.index, new THREE.Vector3())),
       ).toBeLessThan(0.00001);
     fresh.dispose();
+    renderer.dispose();
+  });
+  it('keeps the front armor spike rigid with its plate throughout a punch', async () => {
+    const scene = new THREE.Scene();
+    const renderer = new TripoOrcRenderer(scene, await assetPromise);
+    const enemy = new Simulation().enemies[0];
+    renderer.update(0, enemy, 0, 0, 0);
+    const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
+    const p = mesh.geometry.getAttribute('position');
+    const plate = mesh.skeleton.bones.findIndex((bone) => bone.name === 'leftShoulderPlate');
+    const spike: number[] = [];
+    // The front spike overlaps the diagonal strap in the imported mesh's UV colors.
+    for (let i = 0; i < p.count; i++)
+      if (
+        p.getX(i) > -0.49 &&
+        p.getX(i) < -0.34 &&
+        p.getY(i) > 2.18 &&
+        p.getY(i) < 2.36 &&
+        p.getZ(i) > 0.36
+      )
+        spike.push(i);
+    expect(spike.length).toBeGreaterThan(30);
+    for (const time of [0, 0.12, 0.35, 0.5, 0.55, 0.7, 0.9]) {
+      enemy.windup = time < 0.55 ? 0.55 - time : 0;
+      enemy.cooldown = time >= 0.55 ? 1.8 - time : 0;
+      renderer.update(0, enemy, 0, 0, 0);
+      const transform = mesh.skeleton.bones[plate].matrixWorld
+        .clone()
+        .multiply(mesh.skeleton.boneInverses[plate]);
+      for (const i of spike) {
+        const expected = new THREE.Vector3().fromBufferAttribute(p, i).applyMatrix4(transform);
+        expect(mesh.getVertexPosition(i, new THREE.Vector3()).distanceTo(expected)).toBeLessThan(
+          0.00001,
+        );
+      }
+    }
     renderer.dispose();
   });
   it('isolates the inner collar from arm motion and preserves the fist at the raised peak', async () => {

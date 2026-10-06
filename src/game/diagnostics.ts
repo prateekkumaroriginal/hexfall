@@ -1,5 +1,7 @@
-// Keep only the latest 15 seconds of gameplay, including after opening Pause.
-// Work stays outside React and allocates only once per second.
+import { RUNTIME } from '../config/runtime';
+
+// Keep a bounded history of gameplay, including after opening Pause.
+// Work stays outside React and allocates only at each sampling interval.
 export class FrameDiagnostics {
   private elapsed = 0;
   private frames = 0;
@@ -13,14 +15,14 @@ export class FrameDiagnostics {
     this.frames++;
     this.cpu += cpuMs;
     this.worst = Math.max(this.worst, frameMs);
-    if (this.elapsed >= 1000) {
+    if (this.elapsed >= RUNTIME.diagnosticWindowMilliseconds) {
       this.windows.push({
         elapsed: this.elapsed,
         frames: this.frames,
         cpu: this.cpu,
         worst: this.worst,
       });
-      if (this.windows.length > 15) this.windows.shift();
+      if (this.windows.length > RUNTIME.diagnosticHistoryWindows) this.windows.shift();
       this.elapsed = this.frames = this.cpu = this.worst = 0;
     }
   }

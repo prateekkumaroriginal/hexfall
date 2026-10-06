@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { TreeRenderer } from './trees';
-import { OBSTACLES } from './simulation';
+import { BOULDERS, ENVIRONMENT_SEED } from '../config/world';
+import { GRASS, QUALITY_PRESETS } from '../config/rendering';
+import type { Quality } from './performance';
 import { buildMountains } from './mountains';
 
-const GRASS_PER_TILE = 700;
 function randomSource(seed: number) {
   return () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
@@ -68,8 +69,8 @@ function paintTexture(kind: 'grass' | 'ground' | 'rock', random: () => number) {
 
 export class Environment {
   private grassTiles: { mesh: THREE.InstancedMesh; x: number; z: number }[] = [];
-  private qualityScale = 0.8;
-  private grassRadius = 25;
+  private qualityScale: number = GRASS.initialDensityScale;
+  private grassRadius: number = GRASS.initialRadiusUnits;
   private frustum = new THREE.Frustum();
   private projection = new THREE.Matrix4();
   private trees: TreeRenderer;
@@ -79,7 +80,7 @@ export class Environment {
   private wind = { value: 0 };
   private skyTime = { value: 0 };
   constructor(scene: THREE.Scene) {
-    const random = randomSource(471),
+    const random = randomSource(ENVIRONMENT_SEED),
       dummy = new THREE.Object3D(),
       color = new THREE.Color();
     const sky = new THREE.Mesh(
@@ -198,16 +199,16 @@ export class Environment {
         }
       `,
     });
-    for (let tx = -2; tx < 2; tx++)
-      for (let tz = -2; tz < 3; tz++) {
-        const cx = tx * 8 + 4,
-          cz = tz * 8;
-        const mesh = new THREE.InstancedMesh(blade, grassMat, GRASS_PER_TILE);
+    for (let tx = GRASS.tileX.min; tx < GRASS.tileX.maxExclusive; tx++)
+      for (let tz = GRASS.tileZ.min; tz < GRASS.tileZ.maxExclusive; tz++) {
+        const cx = tx * GRASS.tileSizeUnits + GRASS.tileX.centerOffsetUnits,
+          cz = tz * GRASS.tileSizeUnits;
+        const mesh = new THREE.InstancedMesh(blade, grassMat, GRASS.perTile);
         mesh.name = `grass-tile-${tx}-${tz}`;
         mesh.position.set(cx, 0, cz);
-        for (let i = 0; i < GRASS_PER_TILE; i++) {
-          const x = (random() - 0.5) * 8,
-            z = (random() - 0.5) * 8;
+        for (let i = 0; i < GRASS.perTile; i++) {
+          const x = (random() - 0.5) * GRASS.tileSizeUnits,
+            z = (random() - 0.5) * GRASS.tileSizeUnits;
           dummy.position.set(x, -0.055, z);
           dummy.rotation.set(0, random() * 6.28, 0);
           dummy.scale.setScalar(0.55 + random() * 0.5);
@@ -252,7 +253,7 @@ export class Environment {
     const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 46);
     rocks.name = 'valley-boulders';
     let rockCount = 0;
-    for (const p of OBSTACLES) {
+    for (const p of BOULDERS.layout) {
       dummy.position.set(p.x, 0.72, p.z);
       dummy.rotation.set(0, rockCount * 0.7, 0);
       dummy.scale.set(p.radius, 1.3, p.radius);
@@ -308,9 +309,9 @@ export class Environment {
       toneMapped: false,
     });
   }
-  setQuality(quality: 'low' | 'balanced' | 'high') {
-    this.qualityScale = quality === 'low' ? 0.65 : quality === 'high' ? 1 : 0.85;
-    this.grassRadius = quality === 'low' ? 25 : 32;
+  setQuality(quality: Quality) {
+    this.qualityScale = QUALITY_PRESETS[quality].grassDensity;
+    this.grassRadius = QUALITY_PRESETS[quality].grassRadiusUnits;
   }
   update(time: number, camera: THREE.Camera) {
     this.wind.value = time;
@@ -320,9 +321,14 @@ export class Environment {
     this.frustum.setFromProjectionMatrix(this.projection);
     for (const tile of this.grassTiles) {
       const d = Math.hypot(tile.x - camera.position.x, tile.z - camera.position.z);
-      tile.mesh.visible = d < this.grassRadius + 6;
-      const density = d < 10 ? 1 : d < 20 ? 0.7 : 0.42;
-      tile.mesh.count = Math.floor(GRASS_PER_TILE * this.qualityScale * density);
+      tile.mesh.visible = d < this.grassRadius + GRASS.visibilityPaddingUnits;
+      const density =
+        d < GRASS.nearDistanceUnits
+          ? GRASS.nearDensity
+          : d < GRASS.middleDistanceUnits
+            ? GRASS.middleDensity
+            : GRASS.farDensity;
+      tile.mesh.count = Math.floor(GRASS.perTile * this.qualityScale * density);
     }
     this.trees.update(time, this.frustum);
   }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, parseSettings } from './settings';
+import { parseSettings } from './settings';
+import { DEFAULT_SETTINGS } from './config/settings';
 
 describe('saved settings', () => {
   it('defaults to 100% render scale without a saved record', () => {

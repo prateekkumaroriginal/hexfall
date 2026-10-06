@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { CreatureRenderer } from './creatures';
-import { Simulation, SLIME_SPAWN_DURATION } from './simulation';
+import { Simulation } from './simulation';
+import { SLIME } from '../config/gameplay';
 import { buildBlenderOrcGeometries, ORC_JOINT_PIVOTS } from './creature-blender';
 
 describe('creature rendering', () => {
@@ -104,7 +105,7 @@ describe('slime birth rendering', () => {
       matrix = new THREE.Matrix4();
     const bubbles = scene.getObjectByName('slime-spawn-bubbles') as THREE.InstancedMesh;
     for (const elapsed of [0.56, 1.12, 1.68, 2.24]) {
-      e.spawnRemaining = SLIME_SPAWN_DURATION - elapsed;
+      e.spawnRemaining = SLIME.spawnDurationSeconds - elapsed;
       renderer.update(sim.enemies, elapsed, 0, 9);
       expect(bubbles.count).toBe(5);
       bubbles.getMatrixAt(0, matrix);
@@ -147,13 +148,13 @@ describe('slime birth rendering', () => {
     };
     renderer.update(sim.enemies, 0, 0, 9);
     const beginning = bodyScale();
-    e.spawnRemaining = SLIME_SPAWN_DURATION * 0.7;
+    e.spawnRemaining = SLIME.spawnDurationSeconds * 0.7;
     renderer.update(sim.enemies, 0.42, 0, 9);
     const puddle = bodyScale();
     expect(puddle.x).toBeGreaterThan(beginning.x * 100);
     expect(puddle.y).toBeLessThan(0.1);
     expect(bubbles.count).toBe(5);
-    e.spawnRemaining = SLIME_SPAWN_DURATION * 0.2;
+    e.spawnRemaining = SLIME.spawnDurationSeconds * 0.2;
     renderer.update(sim.enemies, 1.12, 0, 9);
     expect(bodyScale().y).toBeGreaterThan(puddle.y * 5);
     e.spawnRemaining = 0;

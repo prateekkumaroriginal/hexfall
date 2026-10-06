@@ -3,9 +3,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CreatureRenderer } from './creatures';
-import { Simulation, MAX_ENEMIES } from './simulation';
+import { Simulation } from './simulation';
+import { MAX_ENEMIES } from '../config/runtime';
 import { loadTripoOrcAsset, TripoOrcRenderer, TRIPO_ORC_URL } from './tripo-orc';
-import { ORC_STRIDE_LENGTH } from './tripo-orc-animation';
+import { ORC_ANIMATION } from '../config/rendering';
 
 const file = readFileSync(new URL('../../public/models/tripo-orc-rigged.glb', import.meta.url));
 const jsonLength = file.readUInt32LE(12);
@@ -57,7 +58,7 @@ describe('rigged Tripo orc', () => {
     let planted: THREE.Vector3 | undefined;
     let lengths: number[] | undefined;
     for (const phase of [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1]) {
-      enemy.z = phase * ORC_STRIDE_LENGTH;
+      enemy.z = phase * ORC_ANIMATION.strideLengthUnits;
       renderer.update(0, enemy, 0, phase * Math.PI * 2, 1);
       const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
       const position = (name: string) =>
@@ -165,7 +166,7 @@ describe('rigged Tripo orc', () => {
     ] as const) {
       let planted: THREE.Vector3 | undefined;
       for (const phase of phases) {
-        enemy.z = phase * ORC_STRIDE_LENGTH;
+        enemy.z = phase * ORC_ANIMATION.strideLengthUnits;
         renderer.update(0, enemy, 0, phase * Math.PI * 2, 1);
         const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
         const index = mesh.skeleton.bones.findIndex((bone) => bone.name === 'leftFoot');

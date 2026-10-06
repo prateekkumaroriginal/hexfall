@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { expect, it } from 'vitest';
 import { TreeRenderer } from './trees';
-import { TREE_LAYOUT } from './world';
-import { TREE_OBSTACLES } from './simulation';
+import { TREE_LAYOUT, TREE_OBSTACLES } from './world';
 
 it('renders every trunk at its shared collision position and scale', () => {
   const scene = new THREE.Scene();

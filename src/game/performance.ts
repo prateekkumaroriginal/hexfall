@@ -1,4 +1,6 @@
-export type Quality = 'low' | 'balanced' | 'high';
+import { QUALITY_PRESETS } from '../config/rendering';
+
+export type Quality = keyof typeof QUALITY_PRESETS;
 
 export function renderPixelRatio(
   width: number,
@@ -7,7 +9,6 @@ export function renderPixelRatio(
   quality: Quality,
   scale: number,
 ) {
-  const budget = quality === 'low' ? 960 * 540 : quality === 'high' ? 1920 * 1080 : 1280 * 720;
-  const cap = quality === 'high' ? 1.5 : 1;
+  const { pixelBudget: budget, pixelRatioCap: cap } = QUALITY_PRESETS[quality];
   return Math.min(deviceRatio, cap, Math.sqrt(budget / Math.max(1, width * height))) * scale;
 }

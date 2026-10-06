@@ -39,6 +39,20 @@ pnpm preview
 
 Use `pnpm install --frozen-lockfile` in CI to install the versions recorded in `pnpm-lock.yaml` without updating it.
 
+## Game configuration
+
+Tuning values live in `src/config/`. These modules export readonly constants and data; simulation, rendering, layout generation, and settings validation remain in their owning modules.
+
+- `gameplay.ts`: player stats, staff damage and projectiles, separate slime and orc stats, waves, spawning, collisions, and hit feedback.
+- `world.ts`: arena dimensions, boulder layout, tree layout parameters, and environment seeds.
+- `runtime.ts`: pool capacities, simulation and rendering rates, HUD sampling, and diagnostic intervals.
+- `rendering.ts`: quality presets, pixel budgets, grass density and visibility, camera, animation, and spell audio tuning.
+- `settings.ts`: settings defaults, options, slider ranges, and aiming limits.
+
+Each enemy owns its health, damage, movement speed, and wave scaling. Orc stats do not reference slime stats. Movement speed uses each enemy's own base speed plus its per-wave increase multiplied by the current wave number. The initial values preserve the existing game balance.
+
+Shared consumers import the same values: the health bar scales against maximum health, the guide calculates hits from health and spell damage, and attack animation and shot audio cadence use combat timings. Ordinary mathematical literals and detailed procedural art coefficients stay local. Properties include units where needed, such as `fireIntervalSeconds` and `collisionRadiusUnits`.
+
 ## Architecture and performance
 
 - UI styling uses Tailwind CSS v4 through the Vite plugin. `src/style.css` maps the existing palette to semantic theme tokens, following [shadcn's theming conventions](https://ui.shadcn.com/docs/theming). Shared buttons and panels live in `src/components/ui`; `cn()` merges conditional classes and caller overrides. Tailwind's theme and utilities are imported without Preflight to preserve native controls and browser typography. Custom CSS covers base defaults, layered vignette gradients, and browser-specific scrollbars. Preserve the inclusive 700px and 1000px breakpoints when changing responsive utilities.

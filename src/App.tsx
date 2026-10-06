@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Engine } from './game/engine';
 import type { Settings } from './settings';
+import { parseSettings } from './settings';
+import { ORC, PLAYER, SLIME, STAFF, WAVES } from './config/gameplay';
+import { QUALITY_OPTIONS, QUALITY_PRESETS } from './config/rendering';
 import {
   DEFAULT_SETTINGS,
   FIELD_OF_VIEW_SETTINGS,
-  parseSettings,
   RENDER_SCALE_SETTINGS,
   SETTINGS_STORAGE_KEY,
-} from './settings';
+  SENSITIVITY_SETTINGS,
+} from './config/settings';
 import { StatusCheck } from './StatusCheck';
 import type { Snapshot } from './game/simulation';
 import { Button } from './components/ui/button';
@@ -16,7 +19,7 @@ import { cn } from './lib/utils';
 
 const initial: Snapshot = {
   phase: 'ready',
-  hp: 100,
+  hp: PLAYER.maxHealth,
   wave: 0,
   kills: 0,
   score: 0,
@@ -197,7 +200,7 @@ export default function App() {
               ' tracking-[1px] text-[#dde6d0]'
             }
           >
-            Wave {snapshot.wave || 1} / 5
+            Wave {snapshot.wave || 1} / {WAVES.total}
           </div>
           <div
             className={cn(
@@ -219,8 +222,8 @@ export default function App() {
                 {snapshot.wave === 0 ? 'Get ready' : 'Wave cleared'}
               </h2>
               <p className="text-[11px] tracking-[1px]">
-                {snapshot.wave === 5
-                  ? 'All five waves complete.'
+                {snapshot.wave === WAVES.total
+                  ? `All ${WAVES.total} waves complete.`
                   : `Next wave in ${Math.ceil(snapshot.waveWait)}`}
               </p>
             </div>
@@ -231,7 +234,7 @@ export default function App() {
               ' items-end justify-between gap-5 compact:right-[5%] compact:left-[5%]'
             }
           >
-            <div className="w-40" aria-label={`Health ${snapshot.hp} out of 100`}>
+            <div className="w-40" aria-label={`Health ${snapshot.hp} out of ${PLAYER.maxHealth}`}>
               <div className="flex items-center gap-[10px]">
                 <span className="text-[9px] tracking-[1.7px] compact:text-[7px]">HP</span>
                 <strong className="ml-auto font-display text-[24px] font-medium">
@@ -241,7 +244,7 @@ export default function App() {
               <div className="my-[10px] h-[5px] bg-[#10201399]">
                 <i
                   className="block h-full bg-[#c6d89d] [transition:width_.1s]"
-                  style={{ width: `${snapshot.hp}%` }}
+                  style={{ width: `${(snapshot.hp / PLAYER.maxHealth) * 100}%` }}
                 />
               </div>
             </div>
@@ -331,7 +334,7 @@ export default function App() {
                 <fieldset className="mx-0 my-[22px] border-0 p-0">
                   <legend className="mb-3 p-0 text-[13px]">Render quality</legend>
                   <div className="flex gap-2">
-                    {(['low', 'balanced', 'high'] as const).map((quality) => (
+                    {QUALITY_OPTIONS.map((quality) => (
                       <Button
                         variant="quality"
                         key={quality}
@@ -339,7 +342,7 @@ export default function App() {
                         aria-pressed={settings.quality === quality}
                         onClick={() => setSettings((s) => ({ ...s, quality }))}
                       >
-                        {quality === 'low' ? 'Low' : quality === 'balanced' ? 'Balanced' : 'High'}
+                        {QUALITY_PRESETS[quality].label}
                       </Button>
                     ))}
                   </div>
@@ -374,7 +377,7 @@ export default function App() {
                     type="range"
                     min={FIELD_OF_VIEW_SETTINGS.min}
                     max={FIELD_OF_VIEW_SETTINGS.max}
-                    step="1"
+                    step={FIELD_OF_VIEW_SETTINGS.step}
                     value={settings.fieldOfView}
                     aria-describedby="field-of-view-description"
                     onChange={(e) => {
@@ -394,9 +397,9 @@ export default function App() {
                   <input
                     className="mx-0 my-5 block w-full accent-primary"
                     type="range"
-                    min="0.3"
-                    max="2.5"
-                    step="0.1"
+                    min={SENSITIVITY_SETTINGS.min}
+                    max={SENSITIVITY_SETTINGS.max}
+                    step={SENSITIVITY_SETTINGS.step}
                     value={settings.sensitivity}
                     onChange={(e) =>
                       setSettings((s) => ({ ...s, sensitivity: Number(e.target.value) }))
@@ -422,7 +425,7 @@ export default function App() {
               <StatusCheck engine={engine.current} />
             ) : (
               <>
-                <p>Survive five waves.</p>
+                <p>Survive {WAVES.total} waves.</p>
                 <div className="my-[25px] grid gap-[15px]">
                   {[
                     ['W A S D', 'Move through the arena'],
@@ -447,8 +450,10 @@ export default function App() {
                   ))}
                 </div>
                 <p className="border-0 border-l-2 border-solid border-[#bfcd94] bg-[#263429] p-[15px]">
-                  Slimes and orcs attack in melee. Orcs take six hits; slimes take three. Boulders
-                  block your projectiles. Every kill restores 1 health; a new wave restores 15.
+                  Slimes and orcs attack in melee. Orcs take {Math.ceil(ORC.health / STAFF.damage)}{' '}
+                  hits; slimes take {Math.ceil(SLIME.health / STAFF.damage)}. Boulders block your
+                  projectiles. Every kill restores {PLAYER.healingPerKill} health; a new wave
+                  restores {PLAYER.healingPerWave}.
                 </p>
                 <p>
                   Desktop keyboard and mouse required. Entering the arena captures your cursor;

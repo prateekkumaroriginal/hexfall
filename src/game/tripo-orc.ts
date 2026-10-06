@@ -6,7 +6,7 @@ import { createOrcEyeGeometry, OrcEyes } from './tripo-orc-eyes';
 import { OrcFreeArm } from './tripo-orc-free-arm';
 import { prepareOrcSkinMaterial } from './tripo-orc-material';
 import type { Enemy } from './simulation';
-import { ORC_ATTACK_WINDUP, ORC_ATTACK_COOLDOWN, ORC_PUNCH_RECOVERY } from './simulation';
+import { ORC, PLAYER } from '../config/gameplay';
 
 export const TRIPO_ORC_URL = '/models/tripo-orc-rigged.glb';
 export const TRIPO_ORC_HEIGHT = 2.9;
@@ -111,13 +111,14 @@ export class TripoOrcRenderer {
     orc.root.visible = true;
     orc.root.position.set(enemy.x, 0, enemy.z);
     orc.root.rotation.set(0, angle, 0);
-    const attacking = enemy.windup > 0 || enemy.cooldown > ORC_ATTACK_COOLDOWN - ORC_PUNCH_RECOVERY;
+    const attacking =
+      enemy.windup > 0 || enemy.cooldown > ORC.attackCooldownSeconds - ORC.punchRecoverySeconds;
     orc.freeArm.capture(attacking);
     orc.freeArm.restore();
     const attackTime =
       enemy.windup > 0
-        ? ORC_ATTACK_WINDUP - enemy.windup
-        : ORC_ATTACK_WINDUP + ORC_ATTACK_COOLDOWN - enemy.cooldown;
+        ? ORC.attackWindupSeconds - enemy.windup
+        : ORC.attackWindupSeconds + ORC.attackCooldownSeconds - enemy.cooldown;
     const attackWeight = attacking
       ? THREE.MathUtils.smoothstep(attackTime, 0, 0.12) *
         (1 - THREE.MathUtils.smoothstep(attackTime, 0.9, 1))
@@ -136,11 +137,11 @@ export class TripoOrcRenderer {
     const blinkTime = expressionTime % 9.1;
     const exertion =
       enemy.windup > 0
-        ? THREE.MathUtils.smoothstep(ORC_ATTACK_WINDUP - enemy.windup, 0, 0.45)
+        ? THREE.MathUtils.smoothstep(ORC.attackWindupSeconds - enemy.windup, 0, 0.45)
         : THREE.MathUtils.smoothstep(
             enemy.cooldown,
-            ORC_ATTACK_COOLDOWN - 0.2,
-            ORC_ATTACK_COOLDOWN,
+            ORC.attackCooldownSeconds - 0.2,
+            ORC.attackCooldownSeconds,
           );
     const influences = orc.face.morphTargetInfluences!;
     influences[orc.blink] = Math.max(
@@ -152,7 +153,11 @@ export class TripoOrcRenderer {
     influences[orc.jaw] = attacking ? 0 : 0.035 + 0.025 * Math.sin(expressionTime * 1.7);
     influences[orc.brow] = 0.1 + 0.05 * Math.sin(expressionTime * 0.9) + 0.65 * exertion;
     orc.root.updateMatrixWorld(true);
-    this.eyeTarget.set(0, 1.6, Number.isFinite(targetDistance) ? targetDistance : 10000);
+    this.eyeTarget.set(
+      0,
+      PLAYER.eyeHeightUnits,
+      Number.isFinite(targetDistance) ? targetDistance : 10000,
+    );
     orc.root.localToWorld(this.eyeTarget);
     orc.eyes.update(this.eyeTarget, influences[orc.blink]);
     orc.root.updateMatrixWorld(true);

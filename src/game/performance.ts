@@ -9,6 +9,6 @@ export function renderPixelRatio(
   quality: Quality,
   scale: number,
 ) {
-  const { pixelBudget: budget, pixelRatioCap: cap } = QUALITY_PRESETS[quality];
+  const { PIXEL_BUDGET: budget, PIXEL_RATIO_CAP: cap } = QUALITY_PRESETS[quality];
   return Math.min(deviceRatio, cap, Math.sqrt(budget / Math.max(1, width * height))) * scale;
 }

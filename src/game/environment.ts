@@ -69,8 +69,8 @@ function paintTexture(kind: 'grass' | 'ground' | 'rock', random: () => number) {
 
 export class Environment {
   private grassTiles: { mesh: THREE.InstancedMesh; x: number; z: number }[] = [];
-  private qualityScale: number = GRASS.initialDensityScale;
-  private grassRadius: number = GRASS.initialRadiusUnits;
+  private qualityScale: number = GRASS.INITIAL_DENSITY_SCALE;
+  private grassRadius: number = GRASS.INITIAL_RADIUS_UNITS;
   private frustum = new THREE.Frustum();
   private projection = new THREE.Matrix4();
   private trees: TreeRenderer;
@@ -199,16 +199,16 @@ export class Environment {
         }
       `,
     });
-    for (let tx = GRASS.tileX.min; tx < GRASS.tileX.maxExclusive; tx++)
-      for (let tz = GRASS.tileZ.min; tz < GRASS.tileZ.maxExclusive; tz++) {
-        const cx = tx * GRASS.tileSizeUnits + GRASS.tileX.centerOffsetUnits,
-          cz = tz * GRASS.tileSizeUnits;
-        const mesh = new THREE.InstancedMesh(blade, grassMat, GRASS.perTile);
+    for (let tx = GRASS.TILE_X.MIN; tx < GRASS.TILE_X.MAX_EXCLUSIVE; tx++)
+      for (let tz = GRASS.TILE_Z.MIN; tz < GRASS.TILE_Z.MAX_EXCLUSIVE; tz++) {
+        const cx = tx * GRASS.TILE_SIZE_UNITS + GRASS.TILE_X.CENTER_OFFSET_UNITS,
+          cz = tz * GRASS.TILE_SIZE_UNITS;
+        const mesh = new THREE.InstancedMesh(blade, grassMat, GRASS.PER_TILE);
         mesh.name = `grass-tile-${tx}-${tz}`;
         mesh.position.set(cx, 0, cz);
-        for (let i = 0; i < GRASS.perTile; i++) {
-          const x = (random() - 0.5) * GRASS.tileSizeUnits,
-            z = (random() - 0.5) * GRASS.tileSizeUnits;
+        for (let i = 0; i < GRASS.PER_TILE; i++) {
+          const x = (random() - 0.5) * GRASS.TILE_SIZE_UNITS,
+            z = (random() - 0.5) * GRASS.TILE_SIZE_UNITS;
           dummy.position.set(x, -0.055, z);
           dummy.rotation.set(0, random() * 6.28, 0);
           dummy.scale.setScalar(0.55 + random() * 0.5);
@@ -253,10 +253,10 @@ export class Environment {
     const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 46);
     rocks.name = 'valley-boulders';
     let rockCount = 0;
-    for (const p of BOULDERS.layout) {
-      dummy.position.set(p.x, 0.72, p.z);
+    for (const p of BOULDERS.LAYOUT) {
+      dummy.position.set(p.X, 0.72, p.Z);
       dummy.rotation.set(0, rockCount * 0.7, 0);
-      dummy.scale.set(p.radius, 1.3, p.radius);
+      dummy.scale.set(p.RADIUS, 1.3, p.RADIUS);
       dummy.updateMatrix();
       rocks.setMatrixAt(rockCount++, dummy.matrix);
     }
@@ -310,8 +310,8 @@ export class Environment {
     });
   }
   setQuality(quality: Quality) {
-    this.qualityScale = QUALITY_PRESETS[quality].grassDensity;
-    this.grassRadius = QUALITY_PRESETS[quality].grassRadiusUnits;
+    this.qualityScale = QUALITY_PRESETS[quality].GRASS_DENSITY;
+    this.grassRadius = QUALITY_PRESETS[quality].GRASS_RADIUS_UNITS;
   }
   update(time: number, camera: THREE.Camera) {
     this.wind.value = time;
@@ -321,14 +321,14 @@ export class Environment {
     this.frustum.setFromProjectionMatrix(this.projection);
     for (const tile of this.grassTiles) {
       const d = Math.hypot(tile.x - camera.position.x, tile.z - camera.position.z);
-      tile.mesh.visible = d < this.grassRadius + GRASS.visibilityPaddingUnits;
+      tile.mesh.visible = d < this.grassRadius + GRASS.VISIBILITY_PADDING_UNITS;
       const density =
-        d < GRASS.nearDistanceUnits
-          ? GRASS.nearDensity
-          : d < GRASS.middleDistanceUnits
-            ? GRASS.middleDensity
-            : GRASS.farDensity;
-      tile.mesh.count = Math.floor(GRASS.perTile * this.qualityScale * density);
+        d < GRASS.NEAR_DISTANCE_UNITS
+          ? GRASS.NEAR_DENSITY
+          : d < GRASS.MIDDLE_DISTANCE_UNITS
+            ? GRASS.MIDDLE_DENSITY
+            : GRASS.FAR_DENSITY;
+      tile.mesh.count = Math.floor(GRASS.PER_TILE * this.qualityScale * density);
     }
     this.trees.update(time, this.frustum);
   }

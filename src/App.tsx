@@ -5,7 +5,6 @@ import { parseSettings } from './settings';
 import { ORC, PLAYER, SLIME, STAFF, WAVES } from './config/gameplay';
 import { QUALITY_OPTIONS, QUALITY_PRESETS } from './config/rendering';
 import {
-  DEFAULT_SETTINGS,
   FIELD_OF_VIEW_SETTINGS,
   RENDER_SCALE_SETTINGS,
   SETTINGS_STORAGE_KEY,
@@ -19,7 +18,7 @@ import { cn } from './lib/utils';
 
 const initial: Snapshot = {
   phase: 'ready',
-  hp: PLAYER.maxHealth,
+  hp: PLAYER.MAX_HEALTH,
   wave: 0,
   kills: 0,
   score: 0,
@@ -34,7 +33,7 @@ function loadSettings(): Settings {
   try {
     return parseSettings(localStorage.getItem(SETTINGS_STORAGE_KEY));
   } catch {
-    return DEFAULT_SETTINGS;
+    return parseSettings(null);
   }
 }
 const formatTime = (n: number) =>
@@ -200,7 +199,7 @@ export default function App() {
               ' tracking-[1px] text-[#dde6d0]'
             }
           >
-            Wave {snapshot.wave || 1} / {WAVES.total}
+            Wave {snapshot.wave || 1} / {WAVES.TOTAL}
           </div>
           <div
             className={cn(
@@ -222,8 +221,8 @@ export default function App() {
                 {snapshot.wave === 0 ? 'Get ready' : 'Wave cleared'}
               </h2>
               <p className="text-[11px] tracking-[1px]">
-                {snapshot.wave === WAVES.total
-                  ? `All ${WAVES.total} waves complete.`
+                {snapshot.wave === WAVES.TOTAL
+                  ? `All ${WAVES.TOTAL} waves complete.`
                   : `Next wave in ${Math.ceil(snapshot.waveWait)}`}
               </p>
             </div>
@@ -234,7 +233,7 @@ export default function App() {
               ' items-end justify-between gap-5 compact:right-[5%] compact:left-[5%]'
             }
           >
-            <div className="w-40" aria-label={`Health ${snapshot.hp} out of ${PLAYER.maxHealth}`}>
+            <div className="w-40" aria-label={`Health ${snapshot.hp} out of ${PLAYER.MAX_HEALTH}`}>
               <div className="flex items-center gap-[10px]">
                 <span className="text-[9px] tracking-[1.7px] compact:text-[7px]">HP</span>
                 <strong className="ml-auto font-display text-[24px] font-medium">
@@ -244,7 +243,7 @@ export default function App() {
               <div className="my-[10px] h-[5px] bg-[#10201399]">
                 <i
                   className="block h-full bg-[#c6d89d] [transition:width_.1s]"
-                  style={{ width: `${(snapshot.hp / PLAYER.maxHealth) * 100}%` }}
+                  style={{ width: `${(snapshot.hp / PLAYER.MAX_HEALTH) * 100}%` }}
                 />
               </div>
             </div>
@@ -342,7 +341,7 @@ export default function App() {
                         aria-pressed={settings.quality === quality}
                         onClick={() => setSettings((s) => ({ ...s, quality }))}
                       >
-                        {QUALITY_PRESETS[quality].label}
+                        {QUALITY_PRESETS[quality].LABEL}
                       </Button>
                     ))}
                   </div>
@@ -352,10 +351,10 @@ export default function App() {
                   aria-describedby="render-scale-description"
                 >
                   <legend className="mb-3 p-0 text-[13px]">
-                    {RENDER_SCALE_SETTINGS.labels.name}
+                    {RENDER_SCALE_SETTINGS.LABELS.NAME}
                   </legend>
                   <div className="flex gap-2">
-                    {RENDER_SCALE_SETTINGS.options.map(({ value, label }) => (
+                    {RENDER_SCALE_SETTINGS.OPTIONS.map(({ VALUE: value, LABEL: label }) => (
                       <Button
                         variant="quality"
                         key={value}
@@ -367,7 +366,7 @@ export default function App() {
                       </Button>
                     ))}
                   </div>
-                  <p id="render-scale-description">{RENDER_SCALE_SETTINGS.labels.description}</p>
+                  <p id="render-scale-description">{RENDER_SCALE_SETTINGS.LABELS.DESCRIPTION}</p>
                 </fieldset>
                 <label className="mt-[22px] block text-[13px]">
                   Field of view{' '}
@@ -375,9 +374,9 @@ export default function App() {
                   <input
                     className="mx-0 my-5 block w-full accent-primary"
                     type="range"
-                    min={FIELD_OF_VIEW_SETTINGS.min}
-                    max={FIELD_OF_VIEW_SETTINGS.max}
-                    step={FIELD_OF_VIEW_SETTINGS.step}
+                    min={FIELD_OF_VIEW_SETTINGS.MIN}
+                    max={FIELD_OF_VIEW_SETTINGS.MAX}
+                    step={FIELD_OF_VIEW_SETTINGS.STEP}
                     value={settings.fieldOfView}
                     aria-describedby="field-of-view-description"
                     onChange={(e) => {
@@ -397,9 +396,9 @@ export default function App() {
                   <input
                     className="mx-0 my-5 block w-full accent-primary"
                     type="range"
-                    min={SENSITIVITY_SETTINGS.min}
-                    max={SENSITIVITY_SETTINGS.max}
-                    step={SENSITIVITY_SETTINGS.step}
+                    min={SENSITIVITY_SETTINGS.MIN}
+                    max={SENSITIVITY_SETTINGS.MAX}
+                    step={SENSITIVITY_SETTINGS.STEP}
                     value={settings.sensitivity}
                     onChange={(e) =>
                       setSettings((s) => ({ ...s, sensitivity: Number(e.target.value) }))
@@ -425,7 +424,7 @@ export default function App() {
               <StatusCheck engine={engine.current} />
             ) : (
               <>
-                <p>Survive {WAVES.total} waves.</p>
+                <p>Survive {WAVES.TOTAL} waves.</p>
                 <div className="my-[25px] grid gap-[15px]">
                   {[
                     ['W A S D', 'Move through the arena'],
@@ -450,10 +449,10 @@ export default function App() {
                   ))}
                 </div>
                 <p className="border-0 border-l-2 border-solid border-[#bfcd94] bg-[#263429] p-[15px]">
-                  Slimes and orcs attack in melee. Orcs take {Math.ceil(ORC.health / STAFF.damage)}{' '}
-                  hits; slimes take {Math.ceil(SLIME.health / STAFF.damage)}. Boulders block your
-                  projectiles. Every kill restores {PLAYER.healingPerKill} health; a new wave
-                  restores {PLAYER.healingPerWave}.
+                  Slimes and orcs attack in melee. Orcs take {Math.ceil(ORC.HEALTH / STAFF.DAMAGE)}{' '}
+                  hits; slimes take {Math.ceil(SLIME.HEALTH / STAFF.DAMAGE)}. Boulders block your
+                  projectiles. Every kill restores {PLAYER.HEALING_PER_KILL} health; a new wave
+                  restores {PLAYER.HEALING_PER_WAVE}.
                 </p>
                 <p>
                   Desktop keyboard and mouse required. Entering the arena captures your cursor;

@@ -15,14 +15,14 @@ export class FrameDiagnostics {
     this.frames++;
     this.cpu += cpuMs;
     this.worst = Math.max(this.worst, frameMs);
-    if (this.elapsed >= RUNTIME.diagnosticWindowMilliseconds) {
+    if (this.elapsed >= RUNTIME.DIAGNOSTIC_WINDOW_MILLISECONDS) {
       this.windows.push({
         elapsed: this.elapsed,
         frames: this.frames,
         cpu: this.cpu,
         worst: this.worst,
       });
-      if (this.windows.length > RUNTIME.diagnosticHistoryWindows) this.windows.shift();
+      if (this.windows.length > RUNTIME.DIAGNOSTIC_HISTORY_WINDOWS) this.windows.shift();
       this.elapsed = this.frames = this.cpu = this.worst = 0;
     }
   }

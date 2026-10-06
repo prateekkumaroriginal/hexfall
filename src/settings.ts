@@ -15,6 +15,14 @@ export type Settings = {
   sound: boolean;
 };
 
+const defaultSettings: Settings = {
+  quality: DEFAULT_SETTINGS.QUALITY,
+  renderScale: DEFAULT_SETTINGS.RENDER_SCALE,
+  fieldOfView: DEFAULT_SETTINGS.FIELD_OF_VIEW,
+  sensitivity: DEFAULT_SETTINGS.SENSITIVITY,
+  sound: DEFAULT_SETTINGS.SOUND,
+};
+
 export function parseSettings(value: string | null): Settings {
   try {
     const s = JSON.parse(value || 'null');
@@ -22,10 +30,10 @@ export function parseSettings(value: string | null): Settings {
       !s ||
       !QUALITY_OPTIONS.includes(s.quality) ||
       typeof s.sensitivity !== 'number' ||
-      !(s.sensitivity >= SENSITIVITY_SETTINGS.min && s.sensitivity <= SENSITIVITY_SETTINGS.max) ||
+      !(s.sensitivity >= SENSITIVITY_SETTINGS.MIN && s.sensitivity <= SENSITIVITY_SETTINGS.MAX) ||
       typeof s.sound !== 'boolean'
     ) {
-      return DEFAULT_SETTINGS;
+      return defaultSettings;
     }
     return {
       quality: s.quality,
@@ -33,15 +41,15 @@ export function parseSettings(value: string | null): Settings {
       sound: s.sound,
       fieldOfView:
         typeof s.fieldOfView === 'number' &&
-        s.fieldOfView >= FIELD_OF_VIEW_SETTINGS.min &&
-        s.fieldOfView <= FIELD_OF_VIEW_SETTINGS.max
+        s.fieldOfView >= FIELD_OF_VIEW_SETTINGS.MIN &&
+        s.fieldOfView <= FIELD_OF_VIEW_SETTINGS.MAX
           ? s.fieldOfView
-          : FIELD_OF_VIEW_SETTINGS.default,
-      renderScale: RENDER_SCALE_SETTINGS.options.some((option) => option.value === s.renderScale)
+          : FIELD_OF_VIEW_SETTINGS.DEFAULT,
+      renderScale: RENDER_SCALE_SETTINGS.OPTIONS.some((option) => option.VALUE === s.renderScale)
         ? s.renderScale
-        : RENDER_SCALE_SETTINGS.default,
+        : RENDER_SCALE_SETTINGS.DEFAULT,
     };
   } catch {
-    return DEFAULT_SETTINGS;
+    return defaultSettings;
   }
 }

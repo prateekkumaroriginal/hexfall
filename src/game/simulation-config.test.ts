@@ -14,10 +14,10 @@ describe('simulation config integration', () => {
         ...config,
         SLIME: {
           ...config.SLIME,
-          health: 11,
-          damage: 37,
-          baseSpeedUnitsPerSecond: 8,
-          speedPerWaveUnitsPerSecond: 0.9,
+          HEALTH: 11,
+          DAMAGE: 37,
+          BASE_SPEED_UNITS_PER_SECOND: 8,
+          SPEED_PER_WAVE_UNITS_PER_SECOND: 0.9,
         },
       };
     });
@@ -52,9 +52,9 @@ describe('simulation config integration', () => {
       const config = await importOriginal<typeof import('../config/gameplay')>();
       return {
         ...config,
-        PLAYER: { ...config.PLAYER, maxHealth: 200, healingPerKill: 7, healingPerWave: 23 },
-        STAFF: { ...config.STAFF, damage: 3 },
-        WAVES: { ...config.WAVES, firstWave: { slimes: 2, orcs: 2 } },
+        PLAYER: { ...config.PLAYER, MAX_HEALTH: 200, HEALING_PER_KILL: 7, HEALING_PER_WAVE: 23 },
+        STAFF: { ...config.STAFF, DAMAGE: 3 },
+        WAVES: { ...config.WAVES, FIRST_WAVE: { SLIMES: 2, ORCS: 2 } },
       };
     });
     const { Simulation, blankInput } = await import('./simulation');

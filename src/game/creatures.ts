@@ -84,7 +84,7 @@ export class CreatureRenderer {
         emissive: '#385f24',
         emissiveIntensity: 0.2,
       }),
-      MAX_ENEMIES * SLIME_ANIMATION.birthBubblesPerEnemy,
+      MAX_ENEMIES * SLIME_ANIMATION.BIRTH_BUBBLES_PER_ENEMY,
     );
     this.spawnBubbles.name = 'slime-spawn-bubbles';
     this.spawnBubbles.count = 0;
@@ -260,7 +260,7 @@ export class CreatureRenderer {
           const swing = attacking ? 0 : Math.sin(stride) * side * 0.42;
           const attack =
             attacking && side > 0
-              ? -1.7 * Math.sin((1 - e.windup / ORC.attackWindupSeconds) * Math.PI)
+              ? -1.7 * Math.sin((1 - e.windup / ORC.ATTACK_WINDUP_SECONDS) * Math.PI)
               : 0;
           const armPivot = this.orcModel!.pivots[arm];
           this.joint.position.set(armPivot[0], armPivot[1], armPivot[2]);
@@ -276,7 +276,7 @@ export class CreatureRenderer {
         }
       } else if (!e.kind) {
         const bounce = Math.sin(stride),
-          windup = attacking ? Math.sin((1 - e.windup / SLIME.attackWindupSeconds) * Math.PI) : 0;
+          windup = attacking ? Math.sin((1 - e.windup / SLIME.ATTACK_WINDUP_SECONDS) * Math.PI) : 0;
         this.root.position.x += Math.sin(angle) * windup * 0.2;
         this.root.position.z += Math.cos(angle) * windup * 0.2;
         this.root.position.y = Math.max(0, bounce) * 0.1 * birthHeight;
@@ -289,13 +289,13 @@ export class CreatureRenderer {
         this.root.updateMatrix();
         this.transforms.slime.copy(this.root.matrix);
         if (e.spawnRemaining > 0) {
-          const elapsed = SLIME.spawnDurationSeconds - e.spawnRemaining,
-            progress = elapsed / SLIME.spawnDurationSeconds;
-          for (let i = 0; i < SLIME_ANIMATION.birthBubblesPerEnemy; i++) {
-            const a = e.phase + (i * Math.PI * 2) / SLIME_ANIMATION.birthBubblesPerEnemy,
+          const elapsed = SLIME.SPAWN_DURATION_SECONDS - e.spawnRemaining,
+            progress = elapsed / SLIME.SPAWN_DURATION_SECONDS;
+          for (let i = 0; i < SLIME_ANIMATION.BIRTH_BUBBLES_PER_ENEMY; i++) {
+            const a = e.phase + (i * Math.PI * 2) / SLIME_ANIMATION.BIRTH_BUBBLES_PER_ENEMY,
               cycle =
-                (elapsed / SLIME_ANIMATION.birthBubblePeriodSeconds +
-                  i / SLIME_ANIMATION.birthBubblesPerEnemy) %
+                (elapsed / SLIME_ANIMATION.BIRTH_BUBBLE_PERIOD_SECONDS +
+                  i / SLIME_ANIMATION.BIRTH_BUBBLES_PER_ENEMY) %
                 1;
             const pulse = Math.sin(cycle * Math.PI),
               size = pulse * Math.sin(progress * Math.PI);

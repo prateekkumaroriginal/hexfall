@@ -6,7 +6,7 @@ export function verticalFieldOfView(horizontalDegrees: number, aspect: number): 
   return (
     (2 *
       Math.atan(
-        Math.tan((horizontalDegrees * Math.PI) / 360) / Math.max(CAMERA.referenceAspect, aspect),
+        Math.tan((horizontalDegrees * Math.PI) / 360) / Math.max(CAMERA.REFERENCE_ASPECT, aspect),
       ) *
       180) /
     Math.PI

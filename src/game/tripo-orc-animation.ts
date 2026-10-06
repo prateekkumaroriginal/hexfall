@@ -22,25 +22,26 @@ export class OrcLocomotion {
     if (
       !this.initialized[slot] ||
       elapsed < 0 ||
-      distance > ORC_ANIMATION.teleportResetDistanceUnits
+      distance > ORC_ANIMATION.TELEPORT_RESET_DISTANCE_UNITS
     ) {
       this.phases[slot] = 0;
       this.walking[slot] = 0;
       this.initialized[slot] = 1;
     } else if (elapsed > 0) {
       this.phases[slot] =
-        (this.phases[slot] + (distance * Math.PI * 2) / ORC_ANIMATION.strideLengthUnits) %
+        (this.phases[slot] + (distance * Math.PI * 2) / ORC_ANIMATION.STRIDE_LENGTH_UNITS) %
         (Math.PI * 2);
       const target =
         enemy.windup > 0
           ? 0
           : THREE.MathUtils.clamp(
-              distance / elapsed / ORC_ANIMATION.fullWalkBlendSpeedUnitsPerSecond,
+              distance / elapsed / ORC_ANIMATION.FULL_WALK_BLEND_SPEED_UNITS_PER_SECOND,
               0,
               1,
             );
       this.walking[slot] +=
-        (target - this.walking[slot]) * Math.min(1, elapsed * ORC_ANIMATION.walkBlendRatePerSecond);
+        (target - this.walking[slot]) *
+        Math.min(1, elapsed * ORC_ANIMATION.WALK_BLEND_RATE_PER_SECOND);
     }
     this.x[slot] = enemy.x;
     this.z[slot] = enemy.z;

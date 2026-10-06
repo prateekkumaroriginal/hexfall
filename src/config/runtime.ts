@@ -2,13 +2,13 @@ export const MAX_ENEMIES = 48;
 export const MAX_PROJECTILES = 96;
 
 export const RUNTIME = {
-  simulationHz: 60,
-  gameplayRenderHz: 60,
-  menuRenderHz: 30,
-  frameSchedulingToleranceMilliseconds: 0.75,
-  maximumFrameDeltaSeconds: 0.1,
-  hudIntervalSeconds: 0.1,
-  fpsSampleIntervalSeconds: 1,
-  diagnosticWindowMilliseconds: 1000,
-  diagnosticHistoryWindows: 15,
+  SIMULATION_HZ: 60,
+  GAMEPLAY_RENDER_HZ: 60,
+  MENU_RENDER_HZ: 30,
+  FRAME_SCHEDULING_TOLERANCE_MILLISECONDS: 0.75,
+  MAXIMUM_FRAME_DELTA_SECONDS: 0.1,
+  HUD_INTERVAL_SECONDS: 0.1,
+  FPS_SAMPLE_INTERVAL_SECONDS: 1,
+  DIAGNOSTIC_WINDOW_MILLISECONDS: 1000,
+  DIAGNOSTIC_HISTORY_WINDOWS: 15,
 } as const;

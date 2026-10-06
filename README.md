@@ -51,7 +51,7 @@ Tuning values live in `src/config/`. These modules export readonly constants and
 
 Each enemy owns its health, damage, movement speed, and wave scaling. Orc stats do not reference slime stats. Movement speed uses each enemy's own base speed plus its per-wave increase multiplied by the current wave number. The initial values preserve the existing game balance.
 
-Shared consumers import the same values: the health bar scales against maximum health, the guide calculates hits from health and spell damage, and attack animation and shot audio cadence use combat timings. Ordinary mathematical literals and detailed procedural art coefficients stay local. Properties include units where needed, such as `fireIntervalSeconds` and `collisionRadiusUnits`.
+Shared consumers import the same values: the health bar scales against maximum health, the guide calculates hits from health and spell damage, and attack animation and shot audio cadence use combat timings. Ordinary mathematical literals and detailed procedural art coefficients stay local. Constant names and config properties use `SCREAMING_SNAKE_CASE`, with units where needed, such as `STAFF.FIRE_INTERVAL_SECONDS` and `PLAYER.COLLISION_RADIUS_UNITS`. Quality identifiers (`low`, `balanced`, `high`) and saved settings retain their existing format.
 
 ## Architecture and performance
 

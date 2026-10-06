@@ -15,7 +15,9 @@ describe('Tripo orc locomotion', () => {
       }
       return animation.phase;
     };
-    expect(pose(30)).toBeCloseTo(((2 * Math.PI) / ORC_ANIMATION.strideLengthUnits) % (2 * Math.PI));
+    expect(pose(30)).toBeCloseTo(
+      ((2 * Math.PI) / ORC_ANIMATION.STRIDE_LENGTH_UNITS) % (2 * Math.PI),
+    );
     expect(pose(60)).toBeCloseTo(pose(30));
   });
 

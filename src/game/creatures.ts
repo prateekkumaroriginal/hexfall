@@ -8,8 +8,8 @@ import type { Enemy } from './simulation';
 import { buildCreatureGeometries } from './creature-models';
 import type { CreatureBone, CreatureSurface } from './creature-models';
 import { slimePaint, surfacePaint } from './creature-paint';
-import { loadTripoOrcAsset, TripoOrcRenderer } from './tripo-orc';
-import { OrcLocomotion } from './tripo-orc-animation';
+import { loadOrcAsset, OrcRenderer } from './orc-renderer';
+import { OrcLocomotion } from './orc-animation';
 
 type Bone = CreatureBone;
 type Surface = CreatureSurface;
@@ -24,7 +24,7 @@ type OrcModel = {
 export class CreatureRenderer {
   private parts: Part[] = [];
   private disposed = false;
-  private riggedOrcs?: TripoOrcRenderer;
+  private riggedOrcs?: OrcRenderer;
   private orcLoading?: Promise<void>;
   private orcLocomotion = new OrcLocomotion();
   private frustum = new THREE.Frustum();
@@ -169,7 +169,7 @@ export class CreatureRenderer {
       if (!used.has(unused)) unused.dispose();
     }
   }
-  loadTripoOrc() {
+  loadOrc() {
     return (this.orcLoading ??= this.replaceOrc());
   }
   private releaseParts(parts: Part[], retained: Part[] = []) {
@@ -187,7 +187,7 @@ export class CreatureRenderer {
     }
   }
   private async replaceOrc() {
-    const imported = new TripoOrcRenderer(this.scene, await loadTripoOrcAsset());
+    const imported = new OrcRenderer(this.scene, await loadOrcAsset());
     if (this.disposed) {
       imported.dispose();
       return;

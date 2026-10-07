@@ -1,6 +1,6 @@
 ﻿# Orc Blender asset
 
-The game currently uses the rigged Tripo model at `../../public/models/tripo-orc-rigged.glb`. Its editable 17-bone rig, baked animation clips, and Blink/JawOpen/BrowTense facial shape keys are in `tripo-orc-rig.blend`. Import and rig export commands are documented in [creature art inspection](../../docs/creature-art.md#tripo-game-model). The files below remain the previous editable Blender asset and exports.
+The game currently uses the rigged model at `../../public/models/orc-rigged.glb`. Its editable 17-bone rig, baked animation clips, and Blink/JawOpen/BrowTense facial shape keys are in `orc-rig.blend`. Import and rig export commands are documented in [creature art inspection](../../docs/creature-art.md#rigged-game-model). The files below remain the previous editable Blender asset and exports.
 
 `orc.blend` is the editable source. It contains the concept sheet as a packed image, named mesh parts, painted vertex colors, five game joints, and a Cycles inspection studio. Open it in Blender 5.2.2 LTS.
 

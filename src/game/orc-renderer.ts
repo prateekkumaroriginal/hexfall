@@ -2,23 +2,23 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
-import { createOrcEyeGeometry, OrcEyes } from './tripo-orc-eyes';
-import { OrcFreeArm } from './tripo-orc-free-arm';
-import { prepareOrcSkinMaterial } from './tripo-orc-material';
+import { createOrcEyeGeometry, OrcEyes } from './orc-eyes';
+import { OrcFreeArm } from './orc-free-arm';
+import { prepareOrcSkinMaterial } from './orc-material';
 import type { Enemy } from './simulation';
 import { ORC, PLAYER } from '../config/gameplay';
 import { ORC_ANIMATION } from '../config/rendering';
 
-export const TRIPO_ORC_URL = '/models/tripo-orc-rigged.glb';
-export const TRIPO_ORC_HEIGHT = 2.9;
+export const ORC_MODEL_URL = '/models/orc-rigged.glb';
+export const ORC_MODEL_HEIGHT = 2.9;
 
 function blinkPulse(time: number, center: number, duration: number) {
   const t = (time - center) / duration + 0.5;
   return t > 0 && t < 1 ? Math.sin(t * Math.PI) ** 2 : 0;
 }
 
-export async function loadTripoOrcAsset() {
-  const asset = await new GLTFLoader().loadAsync(TRIPO_ORC_URL);
+export async function loadOrcAsset() {
+  const asset = await new GLTFLoader().loadAsync(ORC_MODEL_URL);
   for (const name of ['Idle', 'Walk', 'Punch']) {
     if (!asset.animations.some((clip) => clip.name === name))
       throw new Error(`Missing orc ${name} animation`);
@@ -51,7 +51,7 @@ type Orc = {
 };
 
 // Geometry and textures are shared. Each pooled orc has its own skeleton and pose.
-export class TripoOrcRenderer {
+export class OrcRenderer {
   private orcs: (Orc | undefined)[] = [];
   private eyeGeometry = createOrcEyeGeometry();
   private eyeMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });

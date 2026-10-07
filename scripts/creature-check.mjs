@@ -41,7 +41,7 @@ try {
     scene.add(ground);
     const creatures = new CreatureRenderer(scene),
       sim = new Simulation();
-    await creatures.loadTripoOrc();
+    await creatures.loadOrc();
     Object.assign(sim.enemies[0], { active: true, kind: 0, x: -1.65, z: 0, hp: 3, phase: 0 });
     Object.assign(sim.enemies[1], { active: true, kind: 1, x: 1.25, z: 0, hp: 6, phase: 0 });
     const camera = new THREE.PerspectiveCamera(38, 1.4, 0.1, 50);

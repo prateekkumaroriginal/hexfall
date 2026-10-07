@@ -5,10 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CreatureRenderer } from './creatures';
 import { Simulation } from './simulation';
 import { MAX_ENEMIES } from '../config/runtime';
-import { loadTripoOrcAsset, TripoOrcRenderer, TRIPO_ORC_URL } from './tripo-orc';
+import { loadOrcAsset, OrcRenderer, ORC_MODEL_URL } from './orc-renderer';
 import { ORC_ANIMATION } from '../config/rendering';
 
-const file = readFileSync(new URL('../../public/models/tripo-orc-rigged.glb', import.meta.url));
+const file = readFileSync(new URL('../../public/models/orc-rigged.glb', import.meta.url));
 const jsonLength = file.readUInt32LE(12);
 const gltf = JSON.parse(file.toString('utf8', 20, 20 + jsonLength));
 // Parse the actual rig/clips in Node; image decoding is covered by browser rendering.
@@ -33,7 +33,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe('rigged Tripo orc', () => {
+describe('rigged orc', () => {
   it.each([
     { windup: 1.1, recovery: 0.9, cooldown: 2.5 },
     { windup: 0.275, recovery: 0.225, cooldown: 0.625 },
@@ -51,7 +51,7 @@ describe('rigged Tripo orc', () => {
         },
       };
     });
-    const { TripoOrcRenderer: ConfiguredRenderer } = await import('./tripo-orc');
+    const { OrcRenderer: ConfiguredRenderer } = await import('./orc-renderer');
     const { Simulation: ConfiguredSimulation, blankInput } = await import('./simulation');
     const renderer = new ConfiguredRenderer(new THREE.Scene(), await assetPromise);
     const sim = new ConfiguredSimulation();
@@ -118,7 +118,7 @@ describe('rigged Tripo orc', () => {
   });
   it('plants the stance foot in world space, lifts the swing foot, and keeps limb lengths fixed', async () => {
     const scene = new THREE.Scene(),
-      renderer = new TripoOrcRenderer(scene, await assetPromise);
+      renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     let planted: THREE.Vector3 | undefined;
     let lengths: number[] | undefined;
@@ -152,7 +152,7 @@ describe('rigged Tripo orc', () => {
   });
   it('has longer leg proportions while keeping its neck upright at close range', async () => {
     const scene = new THREE.Scene(),
-      renderer = new TripoOrcRenderer(scene, await assetPromise);
+      renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     for (const distance of [0, 0.5, 2, 20]) {
       for (const attacking of [false, true]) {
@@ -183,7 +183,7 @@ describe('rigged Tripo orc', () => {
   });
   it('rolls from heel contact to toe push-off with a full stride and moving hips/shoulders', async () => {
     const scene = new THREE.Scene(),
-      renderer = new TripoOrcRenderer(scene, await assetPromise);
+      renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     const samples: {
       ankle: THREE.Vector3;
@@ -223,7 +223,7 @@ describe('rigged Tripo orc', () => {
   });
   it('plants the heel and toe contacts while the foot rolls over them', async () => {
     const scene = new THREE.Scene(),
-      renderer = new TripoOrcRenderer(scene, await assetPromise);
+      renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     for (const [phases, pivot] of [
       [[0, 2 / 48, 4 / 48], new THREE.Vector3(-0.48, 0, -0.01)],
@@ -254,7 +254,7 @@ describe('rigged Tripo orc', () => {
       creatures = new CreatureRenderer(scene),
       sim = new Simulation();
     const slime = scene.getObjectByName('creature-slime:gel');
-    await creatures.loadTripoOrc();
+    await creatures.loadOrc();
     sim.enemies.forEach((e, i) =>
       Object.assign(e, { active: true, kind: 1, x: i % 8, z: -Math.floor(i / 8) * 3 }),
     );
@@ -281,7 +281,7 @@ describe('rigged Tripo orc', () => {
   });
   it('keeps the corrected face upright while both eyes track the player at every bearing', async () => {
     const scene = new THREE.Scene(),
-      renderer = new TripoOrcRenderer(scene, await assetPromise);
+      renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     for (const angle of [0, Math.PI / 2, -Math.PI / 3]) {
       for (let frame = 0; frame < 60; frame++) {
@@ -317,7 +317,7 @@ describe('rigged Tripo orc', () => {
   });
   it('blinks and breathes independently per orc, freezes when paused, and closes its mouth during attacks', async () => {
     const scene = new THREE.Scene(),
-      renderer = new TripoOrcRenderer(scene, await assetPromise);
+      renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     const mesh = (slot: number) =>
       scene.getObjectByName(`creature-orc-${slot}`) as THREE.SkinnedMesh;
@@ -367,7 +367,7 @@ describe('rigged Tripo orc', () => {
   });
   it('raises a fist with a straight wrist, slams down at the melee hit, and barely moves the free arm', async () => {
     const scene = new THREE.Scene(),
-      renderer = new TripoOrcRenderer(scene, await assetPromise);
+      renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     renderer.update(0, enemy, 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
@@ -439,7 +439,7 @@ describe('rigged Tripo orc', () => {
   });
   it('gives the free fist a tiny sway through attack blends and restores its walk afterward', async () => {
     const scene = new THREE.Scene(),
-      renderer = new TripoOrcRenderer(scene, await assetPromise);
+      renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     renderer.update(0, enemy, 0, 1.2, 1, 2, 0.4);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
@@ -474,7 +474,7 @@ describe('rigged Tripo orc', () => {
     enemy.cooldown = 0;
     renderer.update(0, enemy, 0, 3, 1, 2, 2);
     const freshScene = new THREE.Scene(),
-      fresh = new TripoOrcRenderer(freshScene, await assetPromise);
+      fresh = new OrcRenderer(freshScene, await assetPromise);
     fresh.update(0, enemy, 0, 3, 1, 2, 2);
     const baseline = freshScene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
     for (const point of sample)
@@ -488,7 +488,7 @@ describe('rigged Tripo orc', () => {
   });
   it('keeps the front armor spike rigid with its plate throughout a punch', async () => {
     const scene = new THREE.Scene();
-    const renderer = new TripoOrcRenderer(scene, await assetPromise);
+    const renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     renderer.update(0, enemy, 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
@@ -524,7 +524,7 @@ describe('rigged Tripo orc', () => {
   });
   it('isolates the inner collar from arm motion and preserves the fist at the raised peak', async () => {
     const scene = new THREE.Scene(),
-      renderer = new TripoOrcRenderer(scene, await assetPromise);
+      renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     renderer.update(0, enemy, 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
@@ -590,7 +590,7 @@ describe('rigged Tripo orc', () => {
   });
   it('keeps the forearm core rigid throughout the slam instead of stretching it back to the torso', async () => {
     const scene = new THREE.Scene();
-    const renderer = new TripoOrcRenderer(scene, await assetPromise);
+    const renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     renderer.update(0, enemy, 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
@@ -628,7 +628,7 @@ describe('rigged Tripo orc', () => {
   });
   it('returns the punching arm without wrist flips or torn shoulder triangles', async () => {
     const scene = new THREE.Scene();
-    const renderer = new TripoOrcRenderer(scene, await assetPromise);
+    const renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     renderer.update(0, enemy, 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
@@ -690,7 +690,7 @@ describe('rigged Tripo orc', () => {
   });
   it('keeps the tracking eyes small and seated in the original sculpted sockets', async () => {
     const scene = new THREE.Scene();
-    const renderer = new TripoOrcRenderer(scene, await assetPromise);
+    const renderer = new OrcRenderer(scene, await assetPromise);
     const enemy = new Simulation().enemies[0];
     for (const time of [0, 0.15, 0.35, 0.5, 0.55, 0.7, 0.9]) {
       enemy.windup = time < 0.55 ? 0.55 - time : 0;
@@ -714,7 +714,7 @@ describe('rigged Tripo orc', () => {
   });
   it('binds the eye sockets entirely to the head so strikes cannot pull them away from the eyes', async () => {
     const scene = new THREE.Scene(),
-      renderer = new TripoOrcRenderer(scene, await assetPromise);
+      renderer = new OrcRenderer(scene, await assetPromise);
     renderer.update(0, new Simulation().enemies[0], 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
     const position = mesh.geometry.getAttribute('position');
@@ -743,7 +743,7 @@ describe('rigged Tripo orc', () => {
       ...(await assetPromise),
       animations: [],
     });
-    await expect(loadTripoOrcAsset()).rejects.toThrow('Missing orc Idle animation');
+    await expect(loadOrcAsset()).rejects.toThrow('Missing orc Idle animation');
     let resolve!: (asset: Awaited<typeof assetPromise>) => void;
     vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockReturnValue(
       new Promise((done) => {
@@ -752,11 +752,11 @@ describe('rigged Tripo orc', () => {
     );
     const scene = new THREE.Scene(),
       creatures = new CreatureRenderer(scene);
-    const loading = creatures.loadTripoOrc();
+    const loading = creatures.loadOrc();
     creatures.dispose();
     resolve(await assetPromise);
     await loading;
     expect(scene.children.some((o) => o.name.startsWith('orc-'))).toBe(false);
-    expect(TRIPO_ORC_URL).toContain('rigged');
+    expect(ORC_MODEL_URL).toContain('rigged');
   });
 });

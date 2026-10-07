@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH } from './world';
+import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH } from '../config/world';
 
 type RidgeProfile = readonly (readonly [outward: number, height: number])[];
 

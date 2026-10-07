@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Engine } from './game/engine';
 import { Button } from './components/ui/button';
 import { cn } from './lib/utils';
-import { RENDER_SCALE_SETTINGS } from './settings';
+import { RENDER_SCALE_SETTINGS } from './config/settings';
 
 export function StatusCheck({ engine }: { engine: Engine | null }) {
   const [status, setStatus] = useState(() => engine?.statusCheck());
@@ -62,7 +62,7 @@ export function StatusCheck({ engine }: { engine: Engine | null }) {
           </dd>
         </div>
         <div>
-          <dt>{RENDER_SCALE_SETTINGS.labels.name}</dt>
+          <dt>{RENDER_SCALE_SETTINGS.LABELS.NAME}</dt>
           <dd>{Math.round(status.scale * 100)}%</dd>
         </div>
         <div>

@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { blankInput, MAX_PROJECTILES, Simulation } from './simulation';
+import { blankInput, Simulation } from './simulation';
+import { PLAYER, STAFF } from '../config/gameplay';
+import { CAMERA, SPELL_AUDIO } from '../config/rendering';
+import { MAX_PROJECTILES, RUNTIME } from '../config/runtime';
+import { AIM_SETTINGS, FIELD_OF_VIEW_SETTINGS } from '../config/settings';
 import type { Snapshot } from './simulation';
 import { CreatureRenderer } from './creatures';
 import { Environment } from './environment';
@@ -14,7 +18,12 @@ export class Engine {
   readonly input = blankInput();
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(60, 1, 0.08, 500);
+  private camera = new THREE.PerspectiveCamera(
+    verticalFieldOfView(FIELD_OF_VIEW_SETTINGS.DEFAULT, CAMERA.REFERENCE_ASPECT),
+    1,
+    CAMERA.NEAR_CLIP_UNITS,
+    CAMERA.FAR_CLIP_UNITS,
+  );
   private abort = new AbortController();
   private resizeObserver: ResizeObserver;
   private frame = 0;
@@ -194,7 +203,9 @@ export class Engine {
     this.camera.fov = verticalFieldOfView(this.settings.fieldOfView, this.camera.aspect);
     this.camera.updateProjectionMatrix();
     // Preserve the staff's screen size and position as the world FOV changes.
-    const staffScale = Math.tan((this.camera.fov * Math.PI) / 360) / Math.tan((78 * Math.PI) / 360);
+    const staffScale =
+      Math.tan((this.camera.fov * Math.PI) / 360) /
+      Math.tan((CAMERA.STAFF_REFERENCE_VERTICAL_FOV_DEGREES * Math.PI) / 360);
     this.staffView.scale.set(staffScale, staffScale, 1);
   };
   async start() {
@@ -262,11 +273,13 @@ export class Engine {
   };
   private mouseMove = (e: MouseEvent) => {
     if (this.sim.phase !== 'playing') return;
-    this.input.yaw -= e.movementX * 0.002 * this.settings.sensitivity;
+    this.input.yaw -=
+      e.movementX * AIM_SETTINGS.RADIANS_PER_MOUSE_PIXEL * this.settings.sensitivity;
     this.input.pitch = THREE.MathUtils.clamp(
-      this.input.pitch - e.movementY * 0.002 * this.settings.sensitivity,
-      -1.3,
-      1.3,
+      this.input.pitch -
+        e.movementY * AIM_SETTINGS.RADIANS_PER_MOUSE_PIXEL * this.settings.sensitivity,
+      -AIM_SETTINGS.PITCH_LIMIT_RADIANS,
+      AIM_SETTINGS.PITCH_LIMIT_RADIANS,
     );
   };
   private keyDown = (e: KeyboardEvent) => {
@@ -291,14 +304,20 @@ export class Engine {
       gain = this.audio.createGain(),
       now = this.audio.currentTime;
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(700, now);
-    osc.frequency.exponentialRampToValueAtTime(140, now + 0.1);
-    gain.gain.setValueAtTime(0.045, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc.frequency.setValueAtTime(SPELL_AUDIO.START_FREQUENCY_HZ, now);
+    osc.frequency.exponentialRampToValueAtTime(
+      SPELL_AUDIO.END_FREQUENCY_HZ,
+      now + SPELL_AUDIO.FREQUENCY_RAMP_SECONDS,
+    );
+    gain.gain.setValueAtTime(SPELL_AUDIO.START_GAIN, now);
+    gain.gain.exponentialRampToValueAtTime(
+      SPELL_AUDIO.END_GAIN,
+      now + SPELL_AUDIO.GAIN_RAMP_SECONDS,
+    );
     osc.connect(gain);
     gain.connect(this.audio.destination);
     osc.start();
-    osc.stop(now + 0.13);
+    osc.stop(now + SPELL_AUDIO.DURATION_SECONDS);
     osc.onended = () => {
       osc.disconnect();
       gain.disconnect();
@@ -307,10 +326,11 @@ export class Engine {
   private tick = (now: number) => {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.tick);
-    // Menus render at 30 Hz; gameplay at at most 60 Hz, including high-refresh displays.
-    if (now - this.last < (this.sim.phase === 'playing' ? 1000 / 60 : 1000 / 30) - 0.75) return;
+    const renderHz =
+      this.sim.phase === 'playing' ? RUNTIME.GAMEPLAY_RENDER_HZ : RUNTIME.MENU_RENDER_HZ;
+    if (now - this.last < 1000 / renderHz - RUNTIME.FRAME_SCHEDULING_TOLERANCE_MILLISECONDS) return;
     const elapsed = (now - (this.last || now)) / 1000;
-    const dt = Math.min(elapsed, 0.1);
+    const dt = Math.min(elapsed, RUNTIME.MAXIMUM_FRAME_DELTA_SECONDS);
     this.last = now;
     if (document.hidden) return;
     const frameStart = performance.now(),
@@ -324,19 +344,20 @@ export class Engine {
         Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft'));
       this.input.fire = this.mouseFire || this.keys.has('ControlLeft');
       this.accumulator += dt;
-      while (this.accumulator >= 1 / 60) {
-        this.sim.step(1 / 60, this.input);
-        this.accumulator -= 1 / 60;
+      const simulationStep = 1 / RUNTIME.SIMULATION_HZ;
+      while (this.accumulator >= simulationStep) {
+        this.sim.step(simulationStep, this.input);
+        this.accumulator -= simulationStep;
       }
-      if (this.input.fire && now - this.lastShot > 130) {
+      if (this.input.fire && now - this.lastShot > STAFF.FIRE_INTERVAL_SECONDS * 1000) {
         this.tone();
         this.lastShot = now;
       }
       this.camera.position.set(
         this.sim.x,
-        1.6 +
-          Math.sin(this.sim.time * 12) *
-            0.025 *
+        PLAYER.EYE_HEIGHT_UNITS +
+          Math.sin(this.sim.time * CAMERA.MOVEMENT_BOB_RADIANS_PER_SECOND) *
+            CAMERA.MOVEMENT_BOB_AMPLITUDE_UNITS *
             Number(!!(this.input.forward || this.input.strafe)),
         this.sim.z,
       );
@@ -378,13 +399,13 @@ export class Engine {
       render.enemies = this.sim.alive;
     }
     this.hudTime += dt;
-    if (this.hudTime > 0.1) {
+    if (this.hudTime > RUNTIME.HUD_INTERVAL_SECONDS) {
       if (this.sim.phase === 'playing') this.onUpdate(this.sim.snapshot());
       this.hudTime = 0;
     }
     this.fpsFrames++;
     this.fpsTime += elapsed;
-    if (this.fpsTime >= 1) {
+    if (this.fpsTime >= RUNTIME.FPS_SAMPLE_INTERVAL_SECONDS) {
       this.onPerformance(
         Math.round(this.fpsFrames / this.fpsTime),
         this.renderer.info.render.calls,

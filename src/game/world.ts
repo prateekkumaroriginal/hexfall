@@ -1,6 +1,4 @@
-export const ARENA_HALF_WIDTH = 16;
-export const ARENA_HALF_DEPTH = 20;
-export const WALL_HEIGHT = 10;
+import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH, BOULDERS, TREES } from '../config/world';
 
 function randomSource(seed: number) {
   return () => {
@@ -10,26 +8,32 @@ function randomSource(seed: number) {
 }
 
 // Rendering and physics use the same deterministic layout and trunk dimensions.
-const random = randomSource(671);
-export const TREE_LAYOUT = Array.from({ length: 20 }, (_, i) => {
+const random = randomSource(TREES.SEED);
+export const TREE_LAYOUT = Array.from({ length: TREES.COUNT }, (_, i) => {
   const side = i % 4;
   const along = (Math.floor(i / 4) - 2) / 2;
   const x =
     side < 2
-      ? (side === 0 ? -1 : 1) * (ARENA_HALF_WIDTH - 1.8)
-      : Math.max(-13.7, Math.min(13.7, along * 14 + (random() - 0.5) * 1.4));
+      ? (side === 0 ? -1 : 1) * (ARENA_HALF_WIDTH - TREES.EDGE_INSET_UNITS)
+      : Math.max(
+          -TREES.ALONG_X_LIMIT_UNITS,
+          Math.min(
+            TREES.ALONG_X_LIMIT_UNITS,
+            along * TREES.ALONG_X_SPAN_UNITS + (random() - 0.5) * TREES.POSITION_JITTER_UNITS,
+          ),
+        );
   const z =
     side >= 2
-      ? (side === 2 ? -1 : 1) * (ARENA_HALF_DEPTH - 1.8)
-      : along * 17 + (random() - 0.5) * 1.4;
+      ? (side === 2 ? -1 : 1) * (ARENA_HALF_DEPTH - TREES.EDGE_INSET_UNITS)
+      : along * TREES.ALONG_Z_SPAN_UNITS + (random() - 0.5) * TREES.POSITION_JITTER_UNITS;
   const yaw = random() * Math.PI * 2;
-  const scale = 0.82 + random() * 0.36;
-  const scaleX = scale * (0.9 + random() * 0.2);
-  const scaleY = scale * (0.95 + random() * 0.18);
+  const scale = TREES.SCALE.MIN + random() * TREES.SCALE.VARIATION;
+  const scaleX = scale * (TREES.SCALE_X.MIN + random() * TREES.SCALE_X.VARIATION);
+  const scaleY = scale * (TREES.SCALE_Y.MIN + random() * TREES.SCALE_Y.VARIATION);
   const scaleZ = scale;
-  const hue = 0.22 + random() * 0.025;
-  const saturation = 0.16 + random() * 0.12;
-  const lightness = 0.78 + random() * 0.1;
+  const hue = TREES.HUE.MIN + random() * TREES.HUE.VARIATION;
+  const saturation = TREES.SATURATION.MIN + random() * TREES.SATURATION.VARIATION;
+  const lightness = TREES.LIGHTNESS.MIN + random() * TREES.LIGHTNESS.VARIATION;
   return {
     x,
     z,
@@ -40,8 +44,24 @@ export const TREE_LAYOUT = Array.from({ length: 20 }, (_, i) => {
     hue,
     saturation,
     lightness,
-    variant: i % 3,
-    radius: 0.5 * Math.max(scaleX, scaleZ),
-    height: 3.4 * scaleY,
+    variant: i % TREES.VARIANTS.length,
+    radius: TREES.TRUNK_RADIUS_UNITS * Math.max(scaleX, scaleZ),
+    height: TREES.TRUNK_HEIGHT_UNITS * scaleY,
   };
 });
+
+export const TREE_OBSTACLES = TREE_LAYOUT.map(({ x, z, radius, height }) => ({
+  x,
+  z,
+  radius,
+  height,
+}));
+export const WORLD_OBSTACLES = [
+  ...BOULDERS.LAYOUT.map((p) => ({
+    x: p.X,
+    z: p.Z,
+    radius: p.RADIUS,
+    height: BOULDERS.COLLISION_HEIGHT_UNITS,
+  })),
+  ...TREE_OBSTACLES,
+];

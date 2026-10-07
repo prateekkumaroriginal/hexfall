@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Simulation } from './simulation';
-import { OrcLocomotion, ORC_STRIDE_LENGTH } from './tripo-orc-animation';
+import { OrcLocomotion } from './tripo-orc-animation';
+import { ORC_ANIMATION } from '../config/rendering';
 
 describe('Tripo orc locomotion', () => {
   it('advances the same gait for the same travel at different frame rates', () => {
@@ -14,7 +15,9 @@ describe('Tripo orc locomotion', () => {
       }
       return animation.phase;
     };
-    expect(pose(30)).toBeCloseTo(((2 * Math.PI) / ORC_STRIDE_LENGTH) % (2 * Math.PI));
+    expect(pose(30)).toBeCloseTo(
+      ((2 * Math.PI) / ORC_ANIMATION.STRIDE_LENGTH_UNITS) % (2 * Math.PI),
+    );
     expect(pose(60)).toBeCloseTo(pose(30));
   });
 

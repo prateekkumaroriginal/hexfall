@@ -1,0 +1,76 @@
+export const QUALITY_PRESETS = {
+  low: {
+    LABEL: 'Low',
+    PIXEL_BUDGET: 960 * 540,
+    PIXEL_RATIO_CAP: 1,
+    GRASS_DENSITY: 0.65,
+    GRASS_RADIUS_UNITS: 25,
+  },
+  balanced: {
+    LABEL: 'Balanced',
+    PIXEL_BUDGET: 1280 * 720,
+    PIXEL_RATIO_CAP: 1,
+    GRASS_DENSITY: 0.85,
+    GRASS_RADIUS_UNITS: 32,
+  },
+  high: {
+    LABEL: 'High',
+    PIXEL_BUDGET: 1920 * 1080,
+    PIXEL_RATIO_CAP: 1.5,
+    GRASS_DENSITY: 1,
+    GRASS_RADIUS_UNITS: 32,
+  },
+} as const;
+
+export const QUALITY_OPTIONS = ['low', 'balanced', 'high'] as const;
+
+export const CAMERA = {
+  NEAR_CLIP_UNITS: 0.08,
+  FAR_CLIP_UNITS: 500,
+  REFERENCE_ASPECT: 16 / 9,
+  STAFF_REFERENCE_VERTICAL_FOV_DEGREES: 78,
+  MOVEMENT_BOB_RADIANS_PER_SECOND: 12,
+  MOVEMENT_BOB_AMPLITUDE_UNITS: 0.025,
+} as const;
+
+export const GRASS = {
+  PER_TILE: 700,
+  INITIAL_DENSITY_SCALE: 0.8,
+  INITIAL_RADIUS_UNITS: 25,
+  TILE_SIZE_UNITS: 8,
+  TILE_X: { MIN: -2, MAX_EXCLUSIVE: 2, CENTER_OFFSET_UNITS: 4 },
+  TILE_Z: { MIN: -2, MAX_EXCLUSIVE: 3 },
+  VISIBILITY_PADDING_UNITS: 6,
+  NEAR_DISTANCE_UNITS: 10,
+  MIDDLE_DISTANCE_UNITS: 20,
+  NEAR_DENSITY: 1,
+  MIDDLE_DENSITY: 0.7,
+  FAR_DENSITY: 0.42,
+} as const;
+
+export const SLIME_ANIMATION = {
+  BIRTH_BUBBLE_PERIOD_SECONDS: 0.56,
+  BIRTH_BUBBLES_PER_ENEMY: 5,
+} as const;
+
+export const ORC_ANIMATION = {
+  // Authored times in the Punch clip, independent of gameplay attack duration.
+  PUNCH_IMPACT_SECONDS: 0.55,
+  PUNCH_BLEND_IN_SECONDS: 0.12,
+  PUNCH_BLEND_OUT_SECONDS: 0.9,
+  // A full left-to-left stride. Each step advances half this distance.
+  STRIDE_LENGTH_UNITS: 1.4,
+  TELEPORT_RESET_DISTANCE_UNITS: 2,
+  FULL_WALK_BLEND_SPEED_UNITS_PER_SECOND: 0.55,
+  WALK_BLEND_RATE_PER_SECOND: 14,
+} as const;
+
+export const SPELL_AUDIO = {
+  START_FREQUENCY_HZ: 700,
+  END_FREQUENCY_HZ: 140,
+  FREQUENCY_RAMP_SECONDS: 0.1,
+  START_GAIN: 0.045,
+  END_GAIN: 0.001,
+  GAIN_RAMP_SECONDS: 0.12,
+  DURATION_SECONDS: 0.13,
+} as const;

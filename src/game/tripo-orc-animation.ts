@@ -1,9 +1,7 @@
 import * as THREE from 'three';
-import { MAX_ENEMIES } from './simulation';
+import { MAX_ENEMIES } from '../config/runtime';
+import { ORC_ANIMATION } from '../config/rendering';
 import type { Enemy } from './simulation';
-
-// A full left-to-left stride. Each step advances half this distance.
-export const ORC_STRIDE_LENGTH = 1.4;
 
 // Fixed slots track every enemy, including culled ones. Phase follows travel, not wall time.
 export class OrcLocomotion {
@@ -21,15 +19,29 @@ export class OrcLocomotion {
   update(slot: number, enemy: Enemy, time: number) {
     const elapsed = time - this.time[slot];
     const distance = Math.hypot(enemy.x - this.x[slot], enemy.z - this.z[slot]);
-    if (!this.initialized[slot] || elapsed < 0 || distance > 2) {
+    if (
+      !this.initialized[slot] ||
+      elapsed < 0 ||
+      distance > ORC_ANIMATION.TELEPORT_RESET_DISTANCE_UNITS
+    ) {
       this.phases[slot] = 0;
       this.walking[slot] = 0;
       this.initialized[slot] = 1;
     } else if (elapsed > 0) {
       this.phases[slot] =
-        (this.phases[slot] + (distance * Math.PI * 2) / ORC_STRIDE_LENGTH) % (Math.PI * 2);
-      const target = enemy.windup > 0 ? 0 : THREE.MathUtils.clamp(distance / elapsed / 0.55, 0, 1);
-      this.walking[slot] += (target - this.walking[slot]) * Math.min(1, elapsed * 14);
+        (this.phases[slot] + (distance * Math.PI * 2) / ORC_ANIMATION.STRIDE_LENGTH_UNITS) %
+        (Math.PI * 2);
+      const target =
+        enemy.windup > 0
+          ? 0
+          : THREE.MathUtils.clamp(
+              distance / elapsed / ORC_ANIMATION.FULL_WALK_BLEND_SPEED_UNITS_PER_SECOND,
+              0,
+              1,
+            );
+      this.walking[slot] +=
+        (target - this.walking[slot]) *
+        Math.min(1, elapsed * ORC_ANIMATION.WALK_BLEND_RATE_PER_SECOND);
     }
     this.x[slot] = enemy.x;
     this.z[slot] = enemy.z;

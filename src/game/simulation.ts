@@ -1,8 +1,16 @@
-import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH, WALL_HEIGHT, TREE_LAYOUT } from './world';
-export { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH, WALL_HEIGHT } from './world';
-export const MAX_ENEMIES = 48;
-export const MAX_PROJECTILES = 96;
-export const PROJECTILE_SPEED = 30;
+import {
+  COMBAT,
+  HIT_FEEDBACK,
+  ORC,
+  PLAYER,
+  SLIME,
+  SLIME_BIRTH,
+  STAFF,
+  WAVES,
+} from '../config/gameplay';
+import { MAX_ENEMIES, MAX_PROJECTILES } from '../config/runtime';
+import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH, WALL_HEIGHT } from '../config/world';
+import { WORLD_OBSTACLES } from './world';
 export type Projectile = {
   active: boolean;
   x: number;
@@ -13,42 +21,26 @@ export type Projectile = {
   vz: number;
   life: number;
 };
-export const SLIME_HEALTH = 2;
-export const SLIME_SPEED = 1.04625;
-export const SLIME_SPAWN_DURATION = 2.5;
-export const ORC_HEALTH = SLIME_HEALTH * 2;
-export const ORC_ATTACK_WINDUP = 0.55;
-export const ORC_ATTACK_COOLDOWN = 1.25;
-export const ORC_PUNCH_RECOVERY = 0.45;
 // A puddle spreads first, then rises into the full creature. Shared by rendering and hit detection.
 export function slimeSpawnScale(remaining: number, vertical = false) {
-  const progress = Math.max(0, Math.min(1, 1 - remaining / SLIME_SPAWN_DURATION));
-  const spread = Math.min(1, progress / 0.3);
-  const rise = Math.max(0, (progress - 0.3) / 0.7);
+  const progress = Math.max(0, Math.min(1, 1 - remaining / SLIME.SPAWN_DURATION_SECONDS));
+  const spread = Math.min(1, progress / SLIME_BIRTH.SPREAD_END_PROGRESS);
+  const rise = Math.max(
+    0,
+    (progress - SLIME_BIRTH.SPREAD_END_PROGRESS) / (1 - SLIME_BIRTH.SPREAD_END_PROGRESS),
+  );
   const growth = rise * rise * (3 - 2 * rise);
   return Math.max(
-    0.001,
-    spread * spread * (3 - 2 * spread) * (vertical ? 0.06 + 0.94 * growth : 1.18 - 0.18 * growth),
+    SLIME_BIRTH.MINIMUM_SCALE,
+    spread *
+      spread *
+      (3 - 2 * spread) *
+      (vertical
+        ? SLIME_BIRTH.INITIAL_HEIGHT_SCALE + (1 - SLIME_BIRTH.INITIAL_HEIGHT_SCALE) * growth
+        : SLIME_BIRTH.INITIAL_WIDTH_SCALE - (SLIME_BIRTH.INITIAL_WIDTH_SCALE - 1) * growth),
   );
 }
-export const OBSTACLES = [
-  { x: -9, z: -11, radius: 1.05 },
-  { x: 10, z: -9, radius: 1.15 },
-  { x: -11, z: 6, radius: 1.0 },
-  { x: 10, z: 12, radius: 1.1 },
-  { x: -4, z: -15, radius: 0.85 },
-  { x: 5, z: 3, radius: 0.9 },
-];
-export const TREE_OBSTACLES = TREE_LAYOUT.map(({ x, z, radius, height }) => ({
-  x,
-  z,
-  radius,
-  height,
-}));
-export const WORLD_OBSTACLES = [
-  ...OBSTACLES.map((p) => ({ ...p, height: 2.1 })),
-  ...TREE_OBSTACLES,
-];
+const TRACE_DIRECTION_EPSILON = 0.0001;
 export type Phase = 'ready' | 'playing' | 'paused' | 'dead' | 'won';
 export type Input = { forward: number; strafe: number; fire: boolean; yaw: number; pitch: number };
 export type Enemy = {
@@ -79,9 +71,9 @@ export type Snapshot = {
 export const blankInput = (): Input => ({ forward: 0, strafe: 0, fire: false, yaw: 0, pitch: 0 });
 export class Simulation {
   phase: Phase = 'ready';
-  x = 0;
-  z = 9;
-  hp = 100;
+  x: number = PLAYER.SPAWN.X;
+  z: number = PLAYER.SPAWN.Z;
+  hp: number = PLAYER.MAX_HEALTH;
   wave = 0;
   kills = 0;
   score = 0;
@@ -92,7 +84,7 @@ export class Simulation {
   hurt = 0;
   remaining = 0;
   spawnCooldown = 0;
-  waveWait = 2;
+  waveWait: number = WAVES.INITIAL_READY_WAIT_SECONDS;
   enemies: Enemy[] = Array.from({ length: MAX_ENEMIES }, () => ({
     active: false,
     x: 0,
@@ -125,9 +117,9 @@ export class Simulation {
     return n;
   }
   reset() {
-    this.x = 0;
-    this.z = 9;
-    this.hp = 100;
+    this.x = PLAYER.SPAWN.X;
+    this.z = PLAYER.SPAWN.Z;
+    this.hp = PLAYER.MAX_HEALTH;
     this.wave = 0;
     this.kills = 0;
     this.score = 0;
@@ -135,7 +127,7 @@ export class Simulation {
     this.invulnerable = this.shootCooldown = this.hit = this.hurt = 0;
     this.remaining = 0;
     this.spawnCooldown = 0;
-    this.waveWait = 1.5;
+    this.waveWait = WAVES.FIRST_WAVE_WAIT_SECONDS;
     for (const e of this.enemies) {
       e.active = false;
       e.spawnRemaining = 0;
@@ -166,24 +158,31 @@ export class Simulation {
     const rx = -sy * cp,
       ry = sp,
       rz = -cy * cp;
-    this.trace(this.x, 1.6, this.z, rx, ry, rz, 40);
-    const aim = Math.max(1.5, this.traceDistance);
+    this.trace(this.x, PLAYER.EYE_HEIGHT_UNITS, this.z, rx, ry, rz, STAFF.AIM_RANGE_UNITS);
+    const aim = Math.max(STAFF.MINIMUM_AIM_DISTANCE_UNITS, this.traceDistance);
     const p = this.projectiles.find((p) => !p.active);
     if (!p) return;
-    p.x = this.x + cy * 0.88 - sy * sp * 0.14 + rx * 1.04;
-    p.y = 1.6 - cp * 0.14 + ry * 1.04;
-    p.z = this.z - sy * 0.88 - cy * sp * 0.14 + rz * 1.04;
-    p.x = Math.max(-ARENA_HALF_WIDTH + 0.01, Math.min(ARENA_HALF_WIDTH - 0.01, p.x));
-    p.z = Math.max(-ARENA_HALF_DEPTH + 0.01, Math.min(ARENA_HALF_DEPTH - 0.01, p.z));
+    const muzzle = STAFF.MUZZLE_OFFSET_UNITS;
+    p.x = this.x + cy * muzzle.RIGHT - sy * sp * muzzle.DOWN + rx * muzzle.FORWARD;
+    p.y = PLAYER.EYE_HEIGHT_UNITS - cp * muzzle.DOWN + ry * muzzle.FORWARD;
+    p.z = this.z - sy * muzzle.RIGHT - cy * sp * muzzle.DOWN + rz * muzzle.FORWARD;
+    p.x = Math.max(
+      -ARENA_HALF_WIDTH + STAFF.PROJECTILE_WALL_INSET_UNITS,
+      Math.min(ARENA_HALF_WIDTH - STAFF.PROJECTILE_WALL_INSET_UNITS, p.x),
+    );
+    p.z = Math.max(
+      -ARENA_HALF_DEPTH + STAFF.PROJECTILE_WALL_INSET_UNITS,
+      Math.min(ARENA_HALF_DEPTH - STAFF.PROJECTILE_WALL_INSET_UNITS, p.z),
+    );
     const dx = this.x + rx * aim - p.x,
-      dy = 1.6 + ry * aim - p.y,
+      dy = PLAYER.EYE_HEIGHT_UNITS + ry * aim - p.y,
       dz = this.z + rz * aim - p.z;
     const distance = Math.hypot(dx, dy, dz) || 1;
-    p.vx = (dx / distance) * PROJECTILE_SPEED;
-    p.vy = (dy / distance) * PROJECTILE_SPEED;
-    p.vz = (dz / distance) * PROJECTILE_SPEED;
+    p.vx = (dx / distance) * STAFF.PROJECTILE_SPEED_UNITS_PER_SECOND;
+    p.vy = (dy / distance) * STAFF.PROJECTILE_SPEED_UNITS_PER_SECOND;
+    p.vz = (dz / distance) * STAFF.PROJECTILE_SPEED_UNITS_PER_SECOND;
     p.active = true;
-    p.life = 2;
+    p.life = STAFF.PROJECTILE_LIFETIME_SECONDS;
   }
   private trace(
     x: number,
@@ -208,7 +207,7 @@ export class Simulation {
         blocked = true;
         continue;
       }
-      if (a > 0.0001) {
+      if (a > TRACE_DIRECTION_EPSILON) {
         const b = ox * rx + oz * rz;
         const discriminant = b * b - a * c;
         if (discriminant >= 0) {
@@ -219,7 +218,7 @@ export class Simulation {
           }
         }
       }
-      if (Math.abs(ry) > 0.0001) {
+      if (Math.abs(ry) > TRACE_DIRECTION_EPSILON) {
         for (const cap of [0, p.height]) {
           const t = (cap - y) / ry;
           if (t >= 0 && t <= closest && (ox + rx * t) ** 2 + (oz + rz * t) ** 2 <= p.radius ** 2) {
@@ -234,11 +233,12 @@ export class Simulation {
       // Ellipsoid hit volumes match the broad orc and low slime silhouettes.
       const width = e.kind ? 1 : slimeSpawnScale(e.spawnRemaining),
         height = e.kind ? 1 : slimeSpawnScale(e.spawnRemaining, true);
-      const sx = e.kind ? 0.75 : 1.05 * width,
-        sy = e.kind ? 1.35 : 0.8 * height,
-        sz = e.kind ? 0.6 : 0.95 * width;
+      const hitbox = (e.kind ? ORC : SLIME).HITBOX_RADII_UNITS;
+      const sx = hitbox.X * width,
+        sy = hitbox.Y * height,
+        sz = hitbox.Z * width;
       const ox = (x - e.x) / sx,
-        oy = (y - (e.kind ? 1.35 : 0.8 * height)) / sy,
+        oy = (y - sy) / sy,
         oz = (z - e.z) / sz;
       const dx = rx / sx,
         dy = ry / sy,
@@ -267,7 +267,7 @@ export class Simulation {
       const velocity = axis === 0 ? rx : rz,
         origin = axis === 0 ? x : z,
         limit = axis === 0 ? ARENA_HALF_WIDTH : ARENA_HALF_DEPTH;
-      if (Math.abs(velocity) < 0.0001) continue;
+      if (Math.abs(velocity) < TRACE_DIRECTION_EPSILON) continue;
       const t = ((velocity > 0 ? limit : -limit) - origin) / velocity;
       if (t >= 0 && t < closest && y + ry * t < WALL_HEIGHT) {
         closest = t;
@@ -282,30 +282,31 @@ export class Simulation {
   private advanceProjectiles(dt: number) {
     for (const p of this.projectiles) {
       if (!p.active) continue;
-      const travel = PROJECTILE_SPEED * dt;
+      const travel = STAFF.PROJECTILE_SPEED_UNITS_PER_SECOND * dt;
       this.trace(
         p.x,
         p.y,
         p.z,
-        p.vx / PROJECTILE_SPEED,
-        p.vy / PROJECTILE_SPEED,
-        p.vz / PROJECTILE_SPEED,
+        p.vx / STAFF.PROJECTILE_SPEED_UNITS_PER_SECOND,
+        p.vy / STAFF.PROJECTILE_SPEED_UNITS_PER_SECOND,
+        p.vz / STAFF.PROJECTILE_SPEED_UNITS_PER_SECOND,
         travel,
       );
-      p.x += (p.vx / PROJECTILE_SPEED) * this.traceDistance;
-      p.y += (p.vy / PROJECTILE_SPEED) * this.traceDistance;
-      p.z += (p.vz / PROJECTILE_SPEED) * this.traceDistance;
+      p.x += (p.vx / STAFF.PROJECTILE_SPEED_UNITS_PER_SECOND) * this.traceDistance;
+      p.y += (p.vy / STAFF.PROJECTILE_SPEED_UNITS_PER_SECOND) * this.traceDistance;
+      p.z += (p.vz / STAFF.PROJECTILE_SPEED_UNITS_PER_SECOND) * this.traceDistance;
       p.life -= dt;
       if (this.traceBlocked) {
         p.active = false;
         if (this.traceTarget) {
           const e = this.traceTarget;
-          e.hp--;
-          e.flash = 0.14;
-          this.hit = 0.1;
+          e.hp -= STAFF.DAMAGE;
+          e.flash = HIT_FEEDBACK.ENEMY_FLASH_SECONDS;
+          this.hit = HIT_FEEDBACK.HIT_INDICATOR_SECONDS;
           if (e.hp <= 0) this.kill(e);
         }
-      } else if (p.life <= 0 || Math.hypot(p.x, p.z) > 55) p.active = false;
+      } else if (p.life <= 0 || Math.hypot(p.x, p.z) > STAFF.PROJECTILE_CLEANUP_DISTANCE_UNITS)
+        p.active = false;
     }
   }
   spawn() {
@@ -315,66 +316,71 @@ export class Simulation {
     const along = this.random() * 2 - 1;
     let x =
       side < 2
-        ? (side === 0 ? -1 : 1) * (ARENA_HALF_WIDTH - 0.8)
-        : along * (ARENA_HALF_WIDTH - 1.5);
+        ? (side === 0 ? -1 : 1) * (ARENA_HALF_WIDTH - WAVES.SPAWN_EDGE_INSET_UNITS)
+        : along * (ARENA_HALF_WIDTH - WAVES.SPAWN_ALONG_INSET_UNITS);
     let z =
       side >= 2
-        ? (side === 2 ? -1 : 1) * (ARENA_HALF_DEPTH - 0.8)
-        : along * (ARENA_HALF_DEPTH - 1.5);
+        ? (side === 2 ? -1 : 1) * (ARENA_HALF_DEPTH - WAVES.SPAWN_EDGE_INSET_UNITS)
+        : along * (ARENA_HALF_DEPTH - WAVES.SPAWN_ALONG_INSET_UNITS);
     const kind =
       this.wave === 1
-        ? this.remaining === 1
+        ? this.remaining <= WAVES.FIRST_WAVE.ORCS
           ? 1
           : 0
-        : this.wave > 1 && this.random() > 0.6
+        : this.wave > 1 && this.random() > 1 - WAVES.LATER_WAVE_ORC_PROBABILITY
           ? 1
           : 0;
-    const radius = kind ? 0.65 : 0.85;
+    const stats = kind ? ORC : SLIME;
+    const radius = stats.COLLISION_RADIUS_UNITS;
     const initialAlong = side < 2 ? z : x;
     // Keep birth puddles and orcs out of trunks, including trees beside the spawn edges.
     for (
       let attempt = 0;
-      WORLD_OBSTACLES.some((p) => Math.hypot(x - p.x, z - p.z) < p.radius + radius + 0.05);
+      WORLD_OBSTACLES.some(
+        (p) =>
+          Math.hypot(x - p.x, z - p.z) < p.radius + radius + WAVES.SPAWN_OBSTACLE_CLEARANCE_UNITS,
+      );
       attempt++
     ) {
-      if (attempt >= 24) return;
-      const offset = Math.ceil((attempt + 1) / 2) * 1.5 * (attempt % 2 ? -1 : 1);
+      if (attempt >= WAVES.SPAWN_RELOCATION_ATTEMPTS) return;
+      const offset =
+        Math.ceil((attempt + 1) / 2) * WAVES.SPAWN_RELOCATION_STEP_UNITS * (attempt % 2 ? -1 : 1);
       if (side < 2)
         z = Math.max(
-          -ARENA_HALF_DEPTH + 1.5,
-          Math.min(ARENA_HALF_DEPTH - 1.5, initialAlong + offset),
+          -ARENA_HALF_DEPTH + WAVES.SPAWN_ALONG_INSET_UNITS,
+          Math.min(ARENA_HALF_DEPTH - WAVES.SPAWN_ALONG_INSET_UNITS, initialAlong + offset),
         );
       else
         x = Math.max(
-          -ARENA_HALF_WIDTH + 1.5,
-          Math.min(ARENA_HALF_WIDTH - 1.5, initialAlong + offset),
+          -ARENA_HALF_WIDTH + WAVES.SPAWN_ALONG_INSET_UNITS,
+          Math.min(ARENA_HALF_WIDTH - WAVES.SPAWN_ALONG_INSET_UNITS, initialAlong + offset),
         );
     }
     Object.assign(e, {
       active: true,
       x,
       z,
-      hp: kind ? ORC_HEALTH : SLIME_HEALTH,
+      hp: stats.HEALTH,
       kind,
       cooldown: 0,
       windup: 0,
       phase: this.random() * Math.PI * 2,
       flash: 0,
-      spawnRemaining: kind ? 0 : SLIME_SPAWN_DURATION,
+      spawnRemaining: stats.SPAWN_DURATION_SECONDS,
     });
     this.remaining--;
   }
   kill(e: Enemy) {
     e.active = false;
     this.kills++;
-    this.score += e.kind ? 250 : 100;
-    this.hp = Math.min(100, this.hp + 1);
+    this.score += (e.kind ? ORC : SLIME).KILL_SCORE;
+    this.hp = Math.min(PLAYER.MAX_HEALTH, this.hp + PLAYER.HEALING_PER_KILL);
   }
   damage(amount: number) {
     if (this.invulnerable > 0 || this.phase !== 'playing') return;
     this.hp = Math.max(0, this.hp - amount);
-    this.hurt = 0.35;
-    this.invulnerable = 0.5;
+    this.hurt = HIT_FEEDBACK.HURT_INDICATOR_SECONDS;
+    this.invulnerable = PLAYER.INVULNERABILITY_SECONDS;
     if (this.hp === 0) this.phase = 'dead';
   }
   step(dt: number, input: Input) {
@@ -386,16 +392,22 @@ export class Simulation {
     this.hurt = Math.max(0, this.hurt - dt);
     const f = input.forward;
     const len = Math.hypot(f, input.strafe) || 1;
-    const speed = 7;
+    const speed = PLAYER.MOVEMENT_SPEED_UNITS_PER_SECOND;
     this.x += ((-Math.sin(input.yaw) * f + Math.cos(input.yaw) * input.strafe) / len) * speed * dt;
     this.z += ((-Math.cos(input.yaw) * f - Math.sin(input.yaw) * input.strafe) / len) * speed * dt;
-    this.x = Math.max(-ARENA_HALF_WIDTH + 0.45, Math.min(ARENA_HALF_WIDTH - 0.45, this.x));
-    this.z = Math.max(-ARENA_HALF_DEPTH + 0.45, Math.min(ARENA_HALF_DEPTH - 0.45, this.z));
+    this.x = Math.max(
+      -ARENA_HALF_WIDTH + PLAYER.WALL_MARGIN_UNITS,
+      Math.min(ARENA_HALF_WIDTH - PLAYER.WALL_MARGIN_UNITS, this.x),
+    );
+    this.z = Math.max(
+      -ARENA_HALF_DEPTH + PLAYER.WALL_MARGIN_UNITS,
+      Math.min(ARENA_HALF_DEPTH - PLAYER.WALL_MARGIN_UNITS, this.z),
+    );
     for (const p of WORLD_OBSTACLES) {
       const dx = this.x - p.x,
         dz = this.z - p.z,
         d = Math.hypot(dx, dz),
-        r = p.radius + 0.4;
+        r = p.radius + PLAYER.COLLISION_RADIUS_UNITS;
       if (d < r) {
         this.x = p.x + (d ? dx / d : 1) * r;
         this.z = p.z + (d ? dz / d : 0) * r;
@@ -407,33 +419,40 @@ export class Simulation {
       const dx = this.x - enemy.x,
         dz = this.z - enemy.z;
       const distance = Math.hypot(dx, dz);
-      if (distance < 1.35) {
-        this.x = enemy.x + (distance ? dx / distance : 0) * 1.35;
-        this.z = enemy.z + (distance ? dz / distance : 1) * 1.35;
+      if (distance < ORC.PLAYER_SEPARATION_UNITS) {
+        this.x = enemy.x + (distance ? dx / distance : 0) * ORC.PLAYER_SEPARATION_UNITS;
+        this.z = enemy.z + (distance ? dz / distance : 1) * ORC.PLAYER_SEPARATION_UNITS;
       }
     }
     if (input.fire && this.shootCooldown <= 0) {
-      this.shootCooldown = 0.13;
+      this.shootCooldown = STAFF.FIRE_INTERVAL_SECONDS;
       this.cast(input);
     }
     this.advanceProjectiles(dt);
     if (this.remaining === 0 && this.alive === 0) {
       this.waveWait -= dt;
       if (this.waveWait <= 0) {
-        if (this.wave === 5) {
+        if (this.wave === WAVES.TOTAL) {
           this.phase = 'won';
           return;
         }
         this.wave++;
-        this.remaining = this.wave === 1 ? 2 : 7 + this.wave * 5;
-        this.hp = Math.min(100, this.hp + 15);
-        this.waveWait = 3;
+        this.remaining =
+          this.wave === 1
+            ? WAVES.FIRST_WAVE.SLIMES + WAVES.FIRST_WAVE.ORCS
+            : WAVES.LATER_WAVE_ENEMY_COUNT.BASE + this.wave * WAVES.LATER_WAVE_ENEMY_COUNT.PER_WAVE;
+        this.hp = Math.min(PLAYER.MAX_HEALTH, this.hp + PLAYER.HEALING_PER_WAVE);
+        this.waveWait = WAVES.CLEAR_WAIT_SECONDS;
       }
     } else {
       this.spawnCooldown -= dt;
       if (this.remaining > 0 && this.spawnCooldown <= 0) {
         this.spawn();
-        this.spawnCooldown = Math.max(0.4, 1.1 - this.wave * 0.1);
+        this.spawnCooldown = Math.max(
+          WAVES.SPAWN_INTERVAL_SECONDS.MINIMUM,
+          WAVES.SPAWN_INTERVAL_SECONDS.BASE -
+            this.wave * WAVES.SPAWN_INTERVAL_SECONDS.REDUCTION_PER_WAVE,
+        );
       }
     }
     for (const e of this.enemies) {
@@ -447,15 +466,16 @@ export class Simulation {
         dz = this.z - e.z,
         d = Math.hypot(dx, dz) || 1;
       e.cooldown = Math.max(0, e.cooldown - dt);
-      const reach = e.kind ? 1.65 : 1.25;
+      const stats = e.kind ? ORC : SLIME;
+      const reach = stats.ATTACK_REACH_UNITS;
       if (e.windup > 0) {
         e.windup = Math.max(0, e.windup - dt);
         if (e.windup === 0) {
-          if (d < reach + 0.2) this.damage(e.kind ? 18 : 10);
-          e.cooldown = e.kind ? ORC_ATTACK_COOLDOWN : 0.9;
+          if (d < reach + COMBAT.MELEE_IMPACT_TOLERANCE_UNITS) this.damage(stats.DAMAGE);
+          e.cooldown = stats.ATTACK_COOLDOWN_SECONDS;
         }
       } else if (d < reach && e.cooldown === 0) {
-        e.windup = e.kind ? ORC_ATTACK_WINDUP : 0.4;
+        e.windup = stats.ATTACK_WINDUP_SECONDS;
       }
       let vx = dx / d,
         vz = dz / d;
@@ -464,18 +484,19 @@ export class Simulation {
         const px = p.x - e.x,
           pz = p.z - e.z,
           pd = Math.hypot(px, pz);
-        if (pd < 3.2 && px * vx + pz * vz > 0) {
+        if (pd < COMBAT.OBSTACLE_STEERING_DISTANCE_UNITS && px * vx + pz * vz > 0) {
           const side = vx * pz - vz * px >= 0 ? -1 : 1;
-          vx += (-pz / (pd || 1)) * side * 1.8;
-          vz += (px / (pd || 1)) * side * 1.8;
+          vx += (-pz / (pd || 1)) * side * COMBAT.OBSTACLE_STEERING_STRENGTH;
+          vz += (px / (pd || 1)) * side * COMBAT.OBSTACLE_STEERING_STRENGTH;
         }
       }
       const moveLength = Math.hypot(vx, vz) || 1;
-      const slimeSpeed = SLIME_SPEED + this.wave * 0.062;
-      const recoveringPunch = e.kind && e.cooldown > ORC_ATTACK_COOLDOWN - ORC_PUNCH_RECOVERY;
-      const standOff = e.kind ? 1.45 : reach * 0.65;
-      const speed =
-        e.windup > 0 || recoveringPunch || d < standOff ? 0 : slimeSpeed * (e.kind ? 0.8 : 1);
+      const movementSpeed =
+        stats.BASE_SPEED_UNITS_PER_SECOND + this.wave * stats.SPEED_PER_WAVE_UNITS_PER_SECOND;
+      const recoveringPunch =
+        e.kind && e.cooldown > stats.ATTACK_COOLDOWN_SECONDS - stats.PUNCH_RECOVERY_SECONDS;
+      const standOff = stats.STOPPING_DISTANCE_UNITS;
+      const speed = e.windup > 0 || recoveringPunch || d < standOff ? 0 : movementSpeed;
       e.x += (vx / moveLength) * speed * dt;
       e.z += (vz / moveLength) * speed * dt;
     }
@@ -489,8 +510,11 @@ export class Simulation {
         const dx = b.x - a.x,
           dz = b.z - a.z,
           d = Math.hypot(dx, dz);
-        if (d < 1.3) {
-          const push = Math.min((1.3 - d) * 0.5, dt * 1.5),
+        if (d < COMBAT.CROWD_SEPARATION_DISTANCE_UNITS) {
+          const push = Math.min(
+              (COMBAT.CROWD_SEPARATION_DISTANCE_UNITS - d) * COMBAT.CROWD_SEPARATION_SHARE,
+              dt * COMBAT.CROWD_SEPARATION_SPEED_UNITS_PER_SECOND,
+            ),
             nx = d ? dx / d : 1,
             nz = d ? dz / d : 0;
           a.x -= nx * push;
@@ -506,14 +530,14 @@ export class Simulation {
           const dx = e.x - p.x,
             dz = e.z - p.z,
             d = Math.hypot(dx, dz);
-          const radius = p.radius + (e.kind ? 0.65 : 0.85);
+          const radius = p.radius + (e.kind ? ORC : SLIME).COLLISION_RADIUS_UNITS;
           if (d < radius) {
             const inward = Math.hypot(p.x, p.z) || 1;
             e.x = p.x + (d ? dx / d : -p.x / inward) * radius;
             e.z = p.z + (d ? dz / d : -p.z / inward) * radius;
             // Slide to the circle/wall intersection instead of clamping back into the trunk.
-            const limitX = ARENA_HALF_WIDTH - 0.6;
-            const limitZ = ARENA_HALF_DEPTH - 0.6;
+            const limitX = ARENA_HALF_WIDTH - COMBAT.ENEMY_WALL_MARGIN_UNITS;
+            const limitZ = ARENA_HALF_DEPTH - COMBAT.ENEMY_WALL_MARGIN_UNITS;
             if (Math.abs(e.x) > limitX) {
               e.x = Math.sign(e.x) * limitX;
               e.z =
@@ -530,8 +554,14 @@ export class Simulation {
             }
           }
         }
-        e.x = Math.max(-ARENA_HALF_WIDTH + 0.6, Math.min(ARENA_HALF_WIDTH - 0.6, e.x));
-        e.z = Math.max(-ARENA_HALF_DEPTH + 0.6, Math.min(ARENA_HALF_DEPTH - 0.6, e.z));
+        e.x = Math.max(
+          -ARENA_HALF_WIDTH + COMBAT.ENEMY_WALL_MARGIN_UNITS,
+          Math.min(ARENA_HALF_WIDTH - COMBAT.ENEMY_WALL_MARGIN_UNITS, e.x),
+        );
+        e.z = Math.max(
+          -ARENA_HALF_DEPTH + COMBAT.ENEMY_WALL_MARGIN_UNITS,
+          Math.min(ARENA_HALF_DEPTH - COMBAT.ENEMY_WALL_MARGIN_UNITS, e.z),
+        );
       }
   }
 }

@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, parseSettings } from './settings';
+import { parseSettings } from './settings';
+
+const defaultSettings = {
+  quality: 'balanced',
+  renderScale: 1,
+  fieldOfView: 90,
+  sensitivity: 1,
+  sound: true,
+};
 
 describe('saved settings', () => {
   it('defaults to 100% render scale without a saved record', () => {
-    expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS);
+    expect(parseSettings(null)).toEqual(defaultSettings);
     expect(parseSettings(null).renderScale).toBe(1);
   });
 
@@ -17,7 +25,7 @@ describe('saved settings', () => {
   });
 
   it.each([0.25, 0.5, 0.75, 1])('restores the selected render scale %s', (renderScale) => {
-    const saved = { ...DEFAULT_SETTINGS, renderScale };
+    const saved = { ...defaultSettings, renderScale };
     expect(parseSettings(JSON.stringify(saved))).toEqual(saved);
   });
 
@@ -31,18 +39,18 @@ describe('saved settings', () => {
   });
 
   it.each(['{', 'null', '[]', '{}'])('falls back to defaults for an invalid record %s', (value) => {
-    expect(parseSettings(value)).toEqual(DEFAULT_SETTINGS);
+    expect(parseSettings(value)).toEqual(defaultSettings);
   });
 
   it.each([75, 90, 110])('restores field of view %s', (fieldOfView) => {
-    const saved = { ...DEFAULT_SETTINGS, fieldOfView };
+    const saved = { ...defaultSettings, fieldOfView };
     expect(parseSettings(JSON.stringify(saved))).toEqual(saved);
   });
 
   it.each([0, 74, 111, '90', null])(
     'defaults invalid field of view %j without losing preferences',
     (fieldOfView) => {
-      const saved = { ...DEFAULT_SETTINGS, quality: 'high', sensitivity: 1.5, fieldOfView };
+      const saved = { ...defaultSettings, quality: 'high', sensitivity: 1.5, fieldOfView };
       expect(parseSettings(JSON.stringify(saved))).toEqual({ ...saved, fieldOfView: 90 });
     },
   );

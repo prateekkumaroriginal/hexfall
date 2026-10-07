@@ -1,19 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import {
-  blankInput,
-  SLIME_HEALTH,
-  SLIME_SPAWN_DURATION,
-  ORC_HEALTH,
-  ORC_ATTACK_COOLDOWN,
-  ORC_PUNCH_RECOVERY,
-  OBSTACLES,
-  TREE_OBSTACLES,
-  WORLD_OBSTACLES,
-  MAX_PROJECTILES,
-  ARENA_HALF_WIDTH,
-  ARENA_HALF_DEPTH,
-  Simulation,
-} from './simulation';
+import { blankInput, Simulation } from './simulation';
+import { ORC, SLIME } from '../config/gameplay';
+import { MAX_PROJECTILES } from '../config/runtime';
+import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH, BOULDERS } from '../config/world';
+import { TREE_OBSTACLES, WORLD_OBSTACLES } from './world';
 
 const advance = (sim: Simulation, seconds: number, input = blankInput()) => {
   for (let i = 0; i < seconds * 60; i++) sim.step(1 / 60, input);
@@ -27,14 +17,14 @@ describe('combat simulation', () => {
     Object.assign(orc, {
       active: true,
       kind: 1,
-      hp: ORC_HEALTH,
+      hp: ORC.HEALTH,
       x: sim.x,
       z: sim.z - 1.5,
       windup: 0,
-      cooldown: ORC_ATTACK_COOLDOWN,
+      cooldown: ORC.ATTACK_COOLDOWN_SECONDS,
     });
     const start = { x: orc.x, z: orc.z };
-    advance(sim, ORC_PUNCH_RECOVERY - 0.05);
+    advance(sim, ORC.PUNCH_RECOVERY_SECONDS - 0.05);
     expect(orc.x).toBe(start.x);
     expect(orc.z).toBe(start.z);
     advance(sim, 0.1);
@@ -52,8 +42,8 @@ describe('combat simulation', () => {
     expect(enemies.map((enemy) => enemy.kind).sort()).toEqual([0, 1]);
     expect(sim.remaining).toBe(0);
     expect(sim.wave).toBe(1);
-    expect(enemies.find((enemy) => enemy.kind === 0)!.hp).toBe(SLIME_HEALTH);
-    expect(enemies.find((enemy) => enemy.kind === 1)!.hp).toBe(ORC_HEALTH);
+    expect(enemies.find((enemy) => enemy.kind === 0)!.hp).toBe(SLIME.HEALTH);
+    expect(enemies.find((enemy) => enemy.kind === 1)!.hp).toBe(ORC.HEALTH);
   });
   it('does not simulate before start or while paused', () => {
     const sim = new Simulation();
@@ -103,16 +93,17 @@ describe('combat simulation', () => {
       Math.abs(e.x) === ARENA_HALF_WIDTH - 0.8 || Math.abs(e.z) === ARENA_HALF_DEPTH - 0.8,
     ).toBe(true);
   });
-  it('spawns orcs with exactly twice slime health', () => {
+  it('spawns each enemy with its own configured health', () => {
     const slime = new Simulation(() => 0.2),
       orc = new Simulation(() => 0.8);
     slime.wave = orc.wave = 2;
     slime.remaining = orc.remaining = 1;
     slime.spawn();
     orc.spawn();
-    expect(slime.enemies[0].hp).toBe(SLIME_HEALTH);
-    expect(orc.enemies[0].hp).toBe(ORC_HEALTH);
-    expect(orc.enemies[0].hp).toBe(slime.enemies[0].hp * 2);
+    expect(slime.enemies[0].hp).toBe(SLIME.HEALTH);
+    expect(orc.enemies[0].hp).toBe(ORC.HEALTH);
+    expect(slime.enemies[0].hp).toBe(2);
+    expect(orc.enemies[0].hp).toBe(4);
   });
   it('kills a spawned slime with two spell hits', () => {
     const sim = new Simulation(() => 0.2);
@@ -140,23 +131,20 @@ describe('combat simulation', () => {
     }
     expect(sim.kills).toBe(1);
   });
-  it.each([1, 2, 3, 4, 5])(
-    'slows slimes by 22.5%% and keeps orcs 20%% slower in wave %i',
-    (wave) => {
-      const travel = [0, 1].map((kind) => {
-        const sim = new Simulation();
-        sim.reset();
-        sim.wave = wave;
-        sim.remaining = 1;
-        sim.spawnCooldown = 100;
-        Object.assign(sim.enemies[0], { active: true, x: 0, z: -10, hp: kind ? 6 : 3, kind });
-        advance(sim, 1);
-        return sim.enemies[0].z + 10;
-      });
-      expect(travel[0]).toBeCloseTo((1.35 + wave * 0.08) * 0.775);
-      expect(travel[1]).toBeCloseTo(travel[0] * 0.8);
-    },
-  );
+  it.each([1, 2, 3, 4, 5])('preserves movement speed for each species in wave %i', (wave) => {
+    const travel = [0, 1].map((kind) => {
+      const sim = new Simulation();
+      sim.reset();
+      sim.wave = wave;
+      sim.remaining = 1;
+      sim.spawnCooldown = 100;
+      Object.assign(sim.enemies[0], { active: true, x: 0, z: -10, hp: kind ? 6 : 3, kind });
+      advance(sim, 1);
+      return sim.enemies[0].z + 10;
+    });
+    expect(travel[0]).toBeCloseTo(1.04625 + wave * 0.062);
+    expect(travel[1]).toBeCloseTo(0.837 + wave * 0.0496);
+  });
   it('keeps forming slimes stationary and harmless until their birth finishes', () => {
     const sim = new Simulation(() => 0.2);
     sim.reset();
@@ -167,7 +155,7 @@ describe('combat simulation', () => {
     e.x = sim.x;
     e.z = sim.z - 1;
     const position = [e.x, e.z];
-    advance(sim, SLIME_SPAWN_DURATION - 0.1);
+    advance(sim, SLIME.SPAWN_DURATION_SECONDS - 0.1);
     expect([e.x, e.z]).toEqual(position);
     expect(e.windup).toBe(0);
     expect(sim.hp).toBe(100);
@@ -196,7 +184,7 @@ describe('combat simulation', () => {
     sim.kill(sim.enemies[0]);
     sim.remaining = 1;
     sim.spawn();
-    expect(sim.enemies[0].spawnRemaining).toBe(SLIME_SPAWN_DURATION);
+    expect(sim.enemies[0].spawnRemaining).toBe(SLIME.SPAWN_DURATION_SECONDS);
     sim.reset();
     expect(sim.enemies[0].spawnRemaining).toBe(0);
     expect(sim.alive).toBe(0);
@@ -213,7 +201,7 @@ describe('combat simulation', () => {
       z: 3,
       hp: 3,
       kind: 0,
-      spawnRemaining: SLIME_SPAWN_DURATION * 0.7,
+      spawnRemaining: SLIME.SPAWN_DURATION_SECONDS * 0.7,
     });
     const shot = sim.projectiles[0];
     Object.assign(shot, { active: true, x: 0, y: 1, z: 5, vx: 0, vy: 0, vz: -30, life: 2 });
@@ -271,10 +259,10 @@ describe('combat simulation', () => {
   it('blocks spells with boulders', () => {
     const sim = new Simulation();
     sim.reset();
-    const p = OBSTACLES[0];
-    sim.x = p.x;
-    sim.z = p.z + 4;
-    Object.assign(sim.enemies[0], { active: true, x: p.x, z: p.z - 4, hp: 6, kind: 1 });
+    const p = BOULDERS.LAYOUT[0];
+    sim.x = p.X;
+    sim.z = p.Z + 4;
+    Object.assign(sim.enemies[0], { active: true, x: p.X, z: p.Z - 4, hp: 6, kind: 1 });
     sim.remaining = 1;
     sim.spawnCooldown = 100;
     sim.cast(blankInput());
@@ -486,12 +474,12 @@ describe('combat simulation', () => {
   it('does not let a muzzle inside a boulder shoot through it', () => {
     const sim = new Simulation();
     sim.reset();
-    const boulder = OBSTACLES[0];
+    const boulder = BOULDERS.LAYOUT[0];
     Object.assign(sim.projectiles[0], {
       active: true,
-      x: boulder.x,
+      x: boulder.X,
       y: 1,
-      z: boulder.z,
+      z: boulder.Z,
       vx: 0,
       vy: 0,
       vz: -30,

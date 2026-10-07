@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { MAX_ENEMIES, SLIME_SPAWN_DURATION, slimeSpawnScale } from './simulation';
+import { slimeSpawnScale } from './simulation';
+import { ORC, SLIME } from '../config/gameplay';
+import { SLIME_ANIMATION } from '../config/rendering';
+import { MAX_ENEMIES } from '../config/runtime';
 import type { Enemy } from './simulation';
 import { buildCreatureGeometries } from './creature-models';
 import type { CreatureBone, CreatureSurface } from './creature-models';
@@ -15,9 +18,6 @@ type OrcModel = {
   groups: Map<string, THREE.BufferGeometry[]>;
   pivots: Record<string, number[]>;
 };
-
-// Preserve the original 2.5 pulses per 1.4 seconds independently of birth duration.
-const SLIME_BIRTH_BUBBLE_PERIOD = 0.56;
 
 // Model parts are authored once, merged by material and joint, and instanced for the horde.
 // No per-enemy meshes, textures, animation mixers, or allocations in the update loop.
@@ -84,7 +84,7 @@ export class CreatureRenderer {
         emissive: '#385f24',
         emissiveIntensity: 0.2,
       }),
-      MAX_ENEMIES * 5,
+      MAX_ENEMIES * SLIME_ANIMATION.BIRTH_BUBBLES_PER_ENEMY,
     );
     this.spawnBubbles.name = 'slime-spawn-bubbles';
     this.spawnBubbles.count = 0;
@@ -259,7 +259,9 @@ export class CreatureRenderer {
             leg: Bone = side < 0 ? 'leftLeg' : 'rightLeg';
           const swing = attacking ? 0 : Math.sin(stride) * side * 0.42;
           const attack =
-            attacking && side > 0 ? -1.7 * Math.sin((1 - e.windup / 0.55) * Math.PI) : 0;
+            attacking && side > 0
+              ? -1.7 * Math.sin((1 - e.windup / ORC.ATTACK_WINDUP_SECONDS) * Math.PI)
+              : 0;
           const armPivot = this.orcModel!.pivots[arm];
           this.joint.position.set(armPivot[0], armPivot[1], armPivot[2]);
           this.joint.rotation.set(-swing * 0.7 + attack, 0, 0);
@@ -274,7 +276,7 @@ export class CreatureRenderer {
         }
       } else if (!e.kind) {
         const bounce = Math.sin(stride),
-          windup = attacking ? Math.sin((1 - e.windup / 0.4) * Math.PI) : 0;
+          windup = attacking ? Math.sin((1 - e.windup / SLIME.ATTACK_WINDUP_SECONDS) * Math.PI) : 0;
         this.root.position.x += Math.sin(angle) * windup * 0.2;
         this.root.position.z += Math.cos(angle) * windup * 0.2;
         this.root.position.y = Math.max(0, bounce) * 0.1 * birthHeight;
@@ -287,11 +289,14 @@ export class CreatureRenderer {
         this.root.updateMatrix();
         this.transforms.slime.copy(this.root.matrix);
         if (e.spawnRemaining > 0) {
-          const elapsed = SLIME_SPAWN_DURATION - e.spawnRemaining,
-            progress = elapsed / SLIME_SPAWN_DURATION;
-          for (let i = 0; i < 5; i++) {
-            const a = e.phase + (i * Math.PI * 2) / 5,
-              cycle = (elapsed / SLIME_BIRTH_BUBBLE_PERIOD + i * 0.2) % 1;
+          const elapsed = SLIME.SPAWN_DURATION_SECONDS - e.spawnRemaining,
+            progress = elapsed / SLIME.SPAWN_DURATION_SECONDS;
+          for (let i = 0; i < SLIME_ANIMATION.BIRTH_BUBBLES_PER_ENEMY; i++) {
+            const a = e.phase + (i * Math.PI * 2) / SLIME_ANIMATION.BIRTH_BUBBLES_PER_ENEMY,
+              cycle =
+                (elapsed / SLIME_ANIMATION.BIRTH_BUBBLE_PERIOD_SECONDS +
+                  i / SLIME_ANIMATION.BIRTH_BUBBLES_PER_ENEMY) %
+                1;
             const pulse = Math.sin(cycle * Math.PI),
               size = pulse * Math.sin(progress * Math.PI);
             this.joint.position.set(

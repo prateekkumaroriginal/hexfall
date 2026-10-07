@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { expect, it } from 'vitest';
 import { buildMountains } from './mountains';
-import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH } from './world';
+import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH } from '../config/world';
 
 it('encloses every approach without placing mountain geometry inside the arena', () => {
   const scene = new THREE.Scene();

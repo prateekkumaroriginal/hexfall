@@ -17,7 +17,11 @@ export const BOULDERS = {
 export const TREES = {
   SEED: 671,
   COUNT: 20,
-  VARIANTS: 3,
+  VARIANTS: [
+    { SEED: 419, SPREAD: 1.03 },
+    { SEED: 546, SPREAD: 0.9 },
+    { SEED: 673, SPREAD: 1.12 },
+  ],
   EDGE_INSET_UNITS: 1.8,
   ALONG_X_LIMIT_UNITS: 13.7,
   ALONG_X_SPAN_UNITS: 14,

@@ -44,7 +44,7 @@ export const TREE_LAYOUT = Array.from({ length: TREES.COUNT }, (_, i) => {
     hue,
     saturation,
     lightness,
-    variant: i % TREES.VARIANTS,
+    variant: i % TREES.VARIANTS.length,
     radius: TREES.TRUNK_RADIUS_UNITS * Math.max(scaleX, scaleZ),
     height: TREES.TRUNK_HEIGHT_UNITS * scaleY,
   };

@@ -54,6 +54,10 @@ export const SLIME_ANIMATION = {
 } as const;
 
 export const ORC_ANIMATION = {
+  // Authored times in the Punch clip, independent of gameplay attack duration.
+  PUNCH_IMPACT_SECONDS: 0.55,
+  PUNCH_BLEND_IN_SECONDS: 0.12,
+  PUNCH_BLEND_OUT_SECONDS: 0.9,
   // A full left-to-left stride. Each step advances half this distance.
   STRIDE_LENGTH_UNITS: 1.4,
   TELEPORT_RESET_DISTANCE_UNITS: 2,

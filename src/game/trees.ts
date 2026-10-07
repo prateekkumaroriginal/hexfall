@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TREE_LAYOUT } from './world';
+import { TREES } from '../config/world';
 
 function randomSource(seed: number) {
   return () => {
@@ -342,10 +343,10 @@ export class TreeRenderer {
       );
     };
     const dummy = new THREE.Object3D();
-    for (let i = 0; i < 3; i++) {
-      const geometry = buildTree(419 + i * 127, [1.03, 0.9, 1.12][i]);
-      const trunk = new THREE.InstancedMesh(geometry.trunk, bark, 20);
-      const canopy = new THREE.InstancedMesh(geometry.canopy, foliage, 20);
+    for (const [i, variant] of TREES.VARIANTS.entries()) {
+      const geometry = buildTree(variant.SEED, variant.SPREAD);
+      const trunk = new THREE.InstancedMesh(geometry.trunk, bark, TREE_LAYOUT.length);
+      const canopy = new THREE.InstancedMesh(geometry.canopy, foliage, TREE_LAYOUT.length);
       trunk.name = `branching-tree-trunks-${i}`;
       canopy.name = `broadleaf-canopies-${i}`;
       for (const mesh of [trunk, canopy]) {

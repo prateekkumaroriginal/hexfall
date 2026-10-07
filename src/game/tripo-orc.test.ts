@@ -27,9 +27,74 @@ const assetPromise = new GLTFLoader().parseAsync(
   bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
   '',
 );
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.doUnmock('../config/gameplay');
+  vi.resetModules();
+});
 
 describe('rigged Tripo orc', () => {
+  it.each([
+    { windup: 1.1, recovery: 0.9, cooldown: 2.5 },
+    { windup: 0.275, recovery: 0.225, cooldown: 0.625 },
+  ])('keeps the punch aligned with changed attack timing %j', async (timing) => {
+    vi.resetModules();
+    vi.doMock('../config/gameplay', async (importOriginal) => {
+      const config = await importOriginal<typeof import('../config/gameplay')>();
+      return {
+        ...config,
+        ORC: {
+          ...config.ORC,
+          ATTACK_WINDUP_SECONDS: timing.windup,
+          ATTACK_COOLDOWN_SECONDS: timing.cooldown,
+          PUNCH_RECOVERY_SECONDS: timing.recovery,
+        },
+      };
+    });
+    const { TripoOrcRenderer: ConfiguredRenderer } = await import('./tripo-orc');
+    const { Simulation: ConfiguredSimulation, blankInput } = await import('./simulation');
+    const renderer = new ConfiguredRenderer(new THREE.Scene(), await assetPromise);
+    const sim = new ConfiguredSimulation();
+    sim.reset();
+    sim.remaining = 1;
+    sim.spawnCooldown = 100;
+    const enemy = sim.enemies[0];
+    Object.assign(enemy, {
+      active: true,
+      kind: 1,
+      x: sim.x,
+      z: sim.z - 1.5,
+      windup: timing.windup,
+      cooldown: 0,
+    });
+    const actions = vi.spyOn(THREE.AnimationMixer.prototype, 'clipAction');
+    try {
+      renderer.update(0, enemy, 0, 0, 0);
+      const punch = actions.mock.results
+        .map((result) => result.value as THREE.AnimationAction)
+        .find((action) => action.getClip().name === 'Punch')!;
+      expect(punch.time).toBe(0);
+      sim.step(timing.windup / 2, blankInput());
+      renderer.update(0, enemy, 0, 0, 0);
+      expect(punch.time).toBeCloseTo(0.275);
+      expect(punch.getEffectiveWeight()).toBeCloseTo(1);
+      const health = sim.hp;
+      sim.step(timing.windup / 2, blankInput());
+      expect(sim.hp).toBe(health - 18);
+      renderer.update(0, enemy, 0, 0, 0);
+      expect(punch.time).toBeCloseTo(0.55);
+      expect(punch.getEffectiveWeight()).toBeCloseTo(1);
+      sim.step(timing.recovery / 2, blankInput());
+      renderer.update(0, enemy, 0, 0, 0);
+      expect(punch.time).toBeCloseTo(0.775);
+      expect(punch.getEffectiveWeight()).toBeCloseTo(1);
+      sim.step(timing.recovery / 2 + 0.00001, blankInput());
+      renderer.update(0, enemy, 0, 0, 0);
+      expect(punch.getEffectiveWeight()).toBe(0);
+    } finally {
+      renderer.dispose();
+    }
+  });
   it('ships weighted bones and baked idle, walk, and punch clips with the PBR maps', () => {
     expect(file.readUInt32LE(8)).toBe(file.length);
     expect(gltf.skins).toHaveLength(1);

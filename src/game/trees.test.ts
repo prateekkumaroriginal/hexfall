@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { expect, it } from 'vitest';
 import { TreeRenderer } from './trees';
 import { TREE_LAYOUT, TREE_OBSTACLES } from './world';
+import { TREES } from '../config/world';
 
 it('renders every trunk at its shared collision position and scale', () => {
   const scene = new THREE.Scene();
@@ -21,7 +22,7 @@ it('renders every trunk at its shared collision position and scale', () => {
     scale = new THREE.Vector3(),
     rotation = new THREE.Quaternion();
   try {
-    for (let variant = 0; variant < 3; variant++) {
+    for (let variant = 0; variant < TREES.VARIANTS.length; variant++) {
       const trunks = scene.getObjectByName(
         `branching-tree-trunks-${variant}`,
       ) as THREE.InstancedMesh;

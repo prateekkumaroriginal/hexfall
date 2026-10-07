@@ -7,6 +7,7 @@ import { OrcFreeArm } from './tripo-orc-free-arm';
 import { prepareOrcSkinMaterial } from './tripo-orc-material';
 import type { Enemy } from './simulation';
 import { ORC, PLAYER } from '../config/gameplay';
+import { ORC_ANIMATION } from '../config/rendering';
 
 export const TRIPO_ORC_URL = '/models/tripo-orc-rigged.glb';
 export const TRIPO_ORC_HEIGHT = 2.9;
@@ -115,13 +116,28 @@ export class TripoOrcRenderer {
       enemy.windup > 0 || enemy.cooldown > ORC.ATTACK_COOLDOWN_SECONDS - ORC.PUNCH_RECOVERY_SECONDS;
     orc.freeArm.capture(attacking);
     orc.freeArm.restore();
+    const punchDuration = orc.punch.getClip().duration;
+    const impactTime = ORC_ANIMATION.PUNCH_IMPACT_SECONDS;
+    // Map each gameplay phase onto the clip so the strike always matches damage.
     const attackTime =
       enemy.windup > 0
-        ? ORC.ATTACK_WINDUP_SECONDS - enemy.windup
-        : ORC.ATTACK_WINDUP_SECONDS + ORC.ATTACK_COOLDOWN_SECONDS - enemy.cooldown;
+        ? THREE.MathUtils.clamp(1 - enemy.windup / ORC.ATTACK_WINDUP_SECONDS, 0, 1) * impactTime
+        : impactTime +
+          THREE.MathUtils.clamp(
+            (ORC.ATTACK_COOLDOWN_SECONDS - enemy.cooldown) /
+              Math.max(ORC.PUNCH_RECOVERY_SECONDS, Number.EPSILON),
+            0,
+            1,
+          ) *
+            (punchDuration - impactTime);
     const attackWeight = attacking
-      ? THREE.MathUtils.smoothstep(attackTime, 0, 0.12) *
-        (1 - THREE.MathUtils.smoothstep(attackTime, 0.9, 1))
+      ? THREE.MathUtils.smoothstep(attackTime, 0, ORC_ANIMATION.PUNCH_BLEND_IN_SECONDS) *
+        (1 -
+          THREE.MathUtils.smoothstep(
+            attackTime,
+            ORC_ANIMATION.PUNCH_BLEND_OUT_SECONDS,
+            punchDuration,
+          ))
       : 0;
     const walkWeight = walking * (1 - attackWeight);
     orc.idle.setEffectiveWeight((1 - walking) * (1 - attackWeight));
@@ -129,7 +145,7 @@ export class TripoOrcRenderer {
     orc.idle.time = (time + slot * 0.37) % orc.idle.getClip().duration;
     orc.walk.time = (phase / (Math.PI * 2)) * orc.walk.getClip().duration;
     orc.punch.setEffectiveWeight(attackWeight);
-    orc.punch.time = THREE.MathUtils.clamp(attackTime, 0, orc.punch.getClip().duration - 0.001);
+    orc.punch.time = THREE.MathUtils.clamp(attackTime, 0, punchDuration - 0.001);
     orc.mixer.update(0);
     orc.freeArm.apply(attackTime);
     // Simulation time freezes breathing/blinks while paused. Each orc has its own rhythm.
@@ -137,12 +153,8 @@ export class TripoOrcRenderer {
     const blinkTime = expressionTime % 9.1;
     const exertion =
       enemy.windup > 0
-        ? THREE.MathUtils.smoothstep(ORC.ATTACK_WINDUP_SECONDS - enemy.windup, 0, 0.45)
-        : THREE.MathUtils.smoothstep(
-            enemy.cooldown,
-            ORC.ATTACK_COOLDOWN_SECONDS - 0.2,
-            ORC.ATTACK_COOLDOWN_SECONDS,
-          );
+        ? THREE.MathUtils.smoothstep(attackTime, 0, 0.45)
+        : 1 - THREE.MathUtils.smoothstep(attackTime, impactTime, impactTime + 0.2);
     const influences = orc.face.morphTargetInfluences!;
     influences[orc.blink] = Math.max(
       blinkPulse(blinkTime, 1.9, 0.18),

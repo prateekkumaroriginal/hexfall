@@ -104,9 +104,9 @@ export class Engine {
     this.projectiles.name = 'wizard-projectiles';
     this.trails.name = 'spell-trails';
     this.creatures = new CreatureRenderer(this.scene);
-    void this.creatures.loadTripoOrc().catch((error) => {
+    void this.creatures.loadOrc().catch((error) => {
       if (this.disposed) return;
-      console.error('Tripo orc could not load.', error);
+      console.error('orc could not load.', error);
       this.pause();
       this.host.dispatchEvent(
         new CustomEvent('engine-error', {

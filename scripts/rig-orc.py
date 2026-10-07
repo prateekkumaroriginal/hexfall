@@ -9,7 +9,7 @@ from mathutils import Vector, Matrix
 ROOT = Path(__file__).resolve().parents[1]
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
-bpy.ops.import_scene.gltf(filepath=str(ROOT / 'public/models/tripo-orc.glb'))
+bpy.ops.import_scene.gltf(filepath=str(ROOT / 'public/models/orc-source.glb'))
 mesh = next(o for o in bpy.context.scene.objects if o.type == 'MESH')
 # The reconstructed concept has a three-quarter pose, about 30 degrees off +X.
 # Correct the mesh before binding, so the face/body and the gait share game +Z.
@@ -31,7 +31,7 @@ bm.to_mesh(mesh.data)
 bm.free()
 mesh.data.validate(clean_customdata=False)
 mesh.data.update()
-mesh.name = 'TripoOrc'
+mesh.name = 'Orc'
 
 def smooth(a, b, value):
     t = max(0, min(1, (value-a)/(b-a)))
@@ -122,8 +122,8 @@ for side, label in [(-1, 'left'), (1, 'right')]:
     bone(label + 'Shin', knee, ankle, label + 'Thigh')
     bone(label + 'Foot', ankle, (side * .48, .08, .50), label + 'Shin')
 
-armature = bpy.data.armatures.new('TripoOrcSkeleton')
-rig = bpy.data.objects.new('TripoOrcRig', armature)
+armature = bpy.data.armatures.new('OrcSkeleton')
+rig = bpy.data.objects.new('OrcRig', armature)
 bpy.context.collection.objects.link(rig)
 bpy.context.view_layer.objects.active = rig
 rig.select_set(True)
@@ -520,11 +520,11 @@ action('Punch', 48, lambda t: pose(punch_time=t))
 rig.animation_data.action = None
 pose()
 bpy.context.scene.frame_set(0)
-bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / 'assets/enemies/tripo-orc-rig.blend'))
+bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / 'assets/enemies/orc-rig.blend'))
 bpy.ops.export_scene.gltf(
-    filepath=str(ROOT / 'public/models/tripo-orc-rigged.glb'),
+    filepath=str(ROOT / 'public/models/orc-rigged.glb'),
     export_format='GLB', export_animations=True, export_animation_mode='ACTIONS',
     export_force_sampling=True, export_frame_range=False, export_skins=True,
     export_all_influences=False, export_yup=True, export_extras=True,
 )
-print('TRIPO_RIG_COMPLETE', len(mesh.data.vertices), list(bpy.data.actions.keys()))
+print('ORC_RIG_COMPLETE', len(mesh.data.vertices), list(bpy.data.actions.keys()))

@@ -1,27 +1,27 @@
 # Creature art inspection
 
-The game currently uses the supplied Tripo orc at `public/models/tripo-orc-rigged.glb`, with its editable rig at `assets/enemies/tripo-orc-rig.blend`. The earlier editable Blender asset remains at `assets/enemies/orc.blend`, with its five-joint armature, vertex paint, packed concept reference, and studio camera. `public/models/orc.glb` and `src/game/orc-blender-data.json` remain its exports; the current game does not load them.
+The game currently uses the rigged orc at `public/models/orc-rigged.glb`, with its editable rig at `assets/enemies/orc-rig.blend`. The earlier editable Blender asset remains at `assets/enemies/orc.blend`, with its five-joint armature, vertex paint, packed concept reference, and studio camera. `public/models/orc.glb` and `src/game/orc-blender-data.json` remain its exports; the current game does not load them.
 
-## Tripo game model
+## Rigged game model
 
 The left shoulder plate and its ivory spikes use rigid plate weights. Spike classification precedes the leather-strap test, and the strap mask stops at the plate boundary. Protected equipment vertices are excluded from skin-weight smoothing so the spike roots cannot stretch with the chest during a punch.
 
-`tripo-orc-material.ts` corrects the imported skin finish at render time. A green-albedo mask gives skin a roughness floor of 0.72 and removes metallic response while preserving equipment materials. A smooth mask in bind-pose coordinates lifts the punching arm's darker albedo toward the torso's olive color. It follows the arm through animation without changing positions, normals, UVs, or skin weights.
+`orc-material.ts` corrects the imported skin finish at render time. A green-albedo mask gives skin a roughness floor of 0.72 and removes metallic response while preserving equipment materials. A smooth mask in bind-pose coordinates lifts the punching arm's darker albedo toward the torso's olive color. It follows the arm through animation without changing positions, normals, UVs, or skin weights.
 
 The punching arm uses asymmetric shoulder, elbow, and wrist pivots measured inside the sculpt, including its rearward elbow position. Its IK pole points down and outward. The hinge normal keeps one sign throughout the attack, preventing a half-turn wrist flip during recovery. The upper arm shares half the hinge roll, and the wrist follows the forearm. Distance-weighted skin blends soften the joined shoulder armor/skin seams. Regression checks sample the full attack for angular jumps and excessive triangle stretching, alongside the existing rigid-fist and minimal-free-arm-sway checks.
 
-The supplied `tripo_pbr_model_faadd513-13e0-414f-9b38-28d3d535c356_meshopt.glb` contains 1,941,648 triangles across five disconnected studies from the concept sheet. `scripts/import-tripo-orc.mjs` decodes its meshopt buffers, welds UV-seam duplicates for connectivity, selects the largest full-body figure, and simplifies that figure from 885,264 to 119,996 triangles. This doubles the earlier 60,000-triangle budget using detail from the original mesh. Attribute-aware simplification retains UV seams and normals. The original color, metallic/roughness, and normal images are copied unchanged. The rigged asset is about 17 MB; the downloaded original is untouched.
+`scripts/import-orc.mjs` reads a static GLB, selects the largest connected full-body figure, and simplifies it to 119,996 triangles. Attribute-aware simplification retains UV seams and normals. Color, metallic/roughness, and normal images are retained. The rigged game asset is about 17 MB.
 
 Rebuild the game copy from the downloaded source:
 
 ```powershell
-node scripts/import-tripo-orc.mjs 'path/to/tripo_pbr_model_faadd513-13e0-414f-9b38-28d3d535c356_meshopt.glb'
+node scripts/import-orc.mjs 'path/to/source.glb'
 ```
 
-The static intermediate is `public/models/tripo-orc.glb`. Build its skeleton and clips with Blender:
+The static intermediate is `public/models/orc-source.glb`. Build its skeleton and clips with Blender:
 
 ```powershell
-& 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' --background --python scripts/rig-tripo-orc.py
+& 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' --background --python scripts/rig-orc.py
 ```
 
 The rig script corrects the source's three-quarter pose by turning it 120 degrees before binding, aligning its torso with gameplay +Z. It centers the figure, grounds its feet, and sets its height to about 2.9 metres. Ankle-to-hip proportions are 12% longer; the upper body's vertical extent absorbs the change to retain approximately the same overall height and width. It welds coincident mesh vertices while retaining face-corner UVs, then binds a 17-bone armature with Blender bone-heat weights. Measured eye landmarks define a separate correction for the head's remaining yaw and sideways cant. Head weights blend that correction into the neck on the neutral mesh and every facial pose. The corrected eye line is level and faces +Z. The GLB includes the corrected eye landmarks as mesh extras. Collar and trapezius weights exclude the raising arm; the blend belongs at the outer deltoid. Fists have rigid hand weights, with local wrist/elbow transitions. Shoulder equipment is identified from the original PBR maps and attached to separate hinged plate bones; plate spikes move with their cap. The chest strap stays attached to the spine. Forearm cores have no torso influence, and the elbow blend is confined to the joint. The rig has pelvis, spine, head, and paired upper arm, forearm, hand, shoulder plate, thigh, shin, and foot bones. It writes the editable `.blend` and a skinned GLB with Idle, Walk, and Punch clips. The rejected coordinate-based shader deformation has been removed.
@@ -30,7 +30,7 @@ The walk solves each leg with two-bone IK and constant segment lengths. One full
 
 The mesh also has `Blink`, `JawOpen`, and `BrowTense` shape keys localized to measured facial landmarks. Eyelid closure, subtle resting jaw breathing, and brow tension preserve the original mesh and painted UVs. The jaw remains closed during the punch's wind-up, strike, and recovery. The skull and eye sockets are weighted entirely to the head, with a transition through the neck. This prevents torso rotation from pulling the sockets away from the separate eyeballs. Painted eye surfaces are opened beneath the retained eyelids, with opaque socket interiors preventing gaps from revealing the background. Two recessed spherical eyes with round pupils follow the same head transform and aim independently toward the wizard's 1.6-metre eye height. Gaze does not rotate or tilt the neck. The eye surfaces close with the eyelid morph and hide at full closure. Idle breathing runs over a four-second clip. Facial rhythms vary by enemy slot and follow simulation time, so pausing freezes them.
 
-`src/game/tripo-orc.ts` pools cloned skeletons and animation mixers while sharing geometry and PBR materials. Each visible orc uses one skinned body draw and two eye draws; eye geometry and material are shared across the pool. `src/game/tripo-orc-animation.ts` tracks distance-based gait phase and walking blend. Stopped orcs settle, paused simulation freezes the pose, pooled or teleported enemies reset their gait, and culled enemies keep tracking travel. Tests verify heel/toe contacts, flat stance feet, lifted swing feet, constant limb lengths, upright head orientation, eye tracking across bearings and distances, independent facial controls, pause behavior, shared geometry, and skeleton cleanup. The first wave contains exactly one slime and one orc.
+`src/game/orc-renderer.ts` pools cloned skeletons and animation mixers while sharing geometry and PBR materials. Each visible orc uses one skinned body draw and two eye draws; eye geometry and material are shared across the pool. `src/game/orc-animation.ts` tracks distance-based gait phase and walking blend. Stopped orcs settle, paused simulation freezes the pose, pooled or teleported enemies reset their gait, and culled enemies keep tracking travel. Tests verify heel/toe contacts, flat stance feet, lifted swing feet, constant limb lengths, upright head orientation, eye tracking across bearings and distances, independent facial controls, pause behavior, shared geometry, and skeleton cleanup. The first wave contains exactly one slime and one orc.
 
 ## Previous Blender model
 

@@ -3,7 +3,7 @@ import { MeshoptDecoder, MeshoptSimplifier } from 'meshoptimizer';
 
 // Keep the downloaded original intact. This copy retains its PBR images and UV seams.
 const source = process.argv[2];
-if (!source) throw new Error('Usage: node scripts/import-tripo-orc.mjs <source.glb>');
+if (!source) throw new Error('Usage: node scripts/import-orc.mjs <source.glb>');
 const file = await readFile(source);
 const jsonLength = file.readUInt32LE(12);
 const gltf = JSON.parse(file.toString('utf8', 20, 20 + jsonLength));
@@ -56,7 +56,7 @@ function attribute(index, components) {
   return result;
 }
 if (gltf.meshes.length !== 1 || gltf.meshes[0].primitives.length !== 1 || gltf.skins?.length) {
-  throw new Error('This importer expects a single static Tripo mesh');
+  throw new Error('This importer expects a single static mesh');
 }
 const primitive = gltf.meshes[0].primitives[0];
 const positions = attribute(primitive.attributes.POSITION, 3);
@@ -181,9 +181,18 @@ primitive.indices = 3;
 gltf.bufferViews = views;
 delete gltf.extensionsUsed;
 delete gltf.extensionsRequired;
-gltf.asset.generator = 'Hexfall Tripo game copy, meshoptimizer attribute-aware simplification';
+gltf.asset.generator = 'Hexfall orc importer, meshoptimizer attribute-aware simplification';
+for (const [collection, name] of [
+  ['nodes', 'OrcNode'],
+  ['meshes', 'OrcMesh'],
+  ['materials', 'OrcMaterial'],
+  ['images', 'OrcTexture'],
+]) {
+  gltf[collection]?.forEach((item, index) => {
+    item.name = `${name}${index}`;
+  });
+}
 gltf.extras = {
-  source: source.split(/[\\/]/).pop(),
   sourceTriangles: indices.length / 3,
   sourceFigures: components.size,
   selectedFigureTriangles: figureIndices.length / 3,
@@ -204,7 +213,7 @@ const binHeader = Buffer.alloc(8);
 binHeader.writeUInt32LE(bin.length);
 binHeader.writeUInt32LE(0x004e4942, 4);
 await writeFile(
-  new URL('../public/models/tripo-orc.glb', import.meta.url),
+  new URL('../public/models/orc-source.glb', import.meta.url),
   Buffer.concat([header, paddedJSON, binHeader, bin]),
 );
 console.log(

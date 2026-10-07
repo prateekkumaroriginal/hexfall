@@ -22,7 +22,7 @@ const rim = new THREE.DirectionalLight('#c3ddeb', 1.3);
 rim.position.set(3, 3, -3);
 scene.add(rim);
 const creatures = new CreatureRenderer(scene);
-await creatures.loadTripoOrc();
+await creatures.loadOrc();
 const sim = new Simulation();
 sim.enemies.forEach((enemy) => {
   enemy.active = false;

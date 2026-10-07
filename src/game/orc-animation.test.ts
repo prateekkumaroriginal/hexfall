@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Simulation } from './simulation';
-import { OrcLocomotion } from './tripo-orc-animation';
+import { OrcLocomotion } from './orc-animation';
 import { ORC_ANIMATION } from '../config/rendering';
 
-describe('Tripo orc locomotion', () => {
+describe('orc locomotion', () => {
   it('advances the same gait for the same travel at different frame rates', () => {
     const pose = (frames: number) => {
       const animation = new OrcLocomotion();

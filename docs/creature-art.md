@@ -1,6 +1,6 @@
 # Creature art inspection
 
-The game currently uses the rigged orc at `public/models/orc-rigged.glb`, with its editable rig at `assets/enemies/orc-rig.blend`. The earlier editable Blender asset remains at `assets/enemies/orc.blend`, with its five-joint armature, vertex paint, packed concept reference, and studio camera. `public/models/orc.glb` and `src/game/orc-blender-data.json` remain its exports; the current game does not load them.
+The game uses `public/models/orc-rigged.glb`, with its editable rig at `assets/enemies/orc-rig.blend`. The static source for rebuilding the rig is `public/models/orc-source.glb`. The earlier five-joint model, packed export, and export scripts have been removed.
 
 ## Rigged game model
 
@@ -32,58 +32,20 @@ The mesh also has `Blink`, `JawOpen`, and `BrowTense` shape keys localized to me
 
 `src/game/orc-renderer.ts` pools cloned skeletons and animation mixers while sharing geometry and PBR materials. Each visible orc uses one skinned body draw and two eye draws; eye geometry and material are shared across the pool. `src/game/orc-animation.ts` tracks distance-based gait phase and walking blend. Stopped orcs settle, paused simulation freezes the pose, pooled or teleported enemies reset their gait, and culled enemies keep tracking travel. Tests verify heel/toe contacts, flat stance feet, lifted swing feet, constant limb lengths, upright head orientation, eye tracking across bearings and distances, independent facial controls, pause behavior, shared geometry, and skeleton cleanup. The first wave contains exactly one slime and one orc.
 
-## Previous Blender model
-
-The rejected orc was discarded. The replacement starts from an empty Blender scene and contains newly built torso, limbs, hands, head, hair, and equipment. Eye sockets and the mouth are carved into the facial mesh. Brows overlap spherical amber eyes; ears have recessed inner planes. Bracers follow the forearm surfaces, the chest strap follows the torso, and the belt fits both the torso and hips. The armor includes three upper shoulder spikes and one front spike. Leather panels hang separately over the thighs. The source also contains stitches, rivets, buckles, scars, hair strands, and surface scuffs.
-
-This remains an interpretation of the painted reference, not an exact reproduction. The facial planes, hair masses, muscle transitions, equipment contours, and wear placement still differ. Geometric dimensions and rendering checks do not establish artistic equivalence.
-
-The slime retains its existing offline sculpture and procedural detail assembly. Its geometry is unchanged.
-
 ## Inspecting the game model
 
 Run `pnpm dev` and open `/creature-studio.html`. The viewer uses the game's renderer, materials, and joint transforms. It provides front, three-quarter, side, rear, and face views, clay and wireframe modes, concept comparisons, and measurements.
 
-The comparison reads `orc-concept.png` and `slime-concept.png` from `local-artifacts/enemy-concepts/`. Those local image files are not included separately in the repository. The orc reference is packed inside the Blender source. Missing browser references are reported in the viewer. Full-body comparisons align reference crops to the model's projected height. Lighting and perspective differ between the concept, Blender studio, and game. The sheet has no orc side view or slime rear view; the viewer labels the front reference when substituting it.
+The comparison reads `orc-concept.png` and `slime-concept.png` from `local-artifacts/enemy-concepts/`. Those local image files are not included separately in the repository. Missing browser references are reported in the viewer. Full-body comparisons align reference crops to the model's projected height. Lighting and perspective differ between the concept, Blender studio, and game. The sheet has no orc side view or slime rear view; the viewer labels the front reference when substituting it.
 
 Measurement exports report world-space bounds and twelve triangle cross-sections from feet to crown. The width ratios describe geometry, not artistic similarity.
 
-## Editing and exporting Blender
+## Editing and verification
 
-Open `assets/enemies/orc.blend` in Blender 5.2.2 LTS. Edit the named meshes and their `Paint` color attributes, then save. Mesh custom properties `creature_bone` and `creature_surface` determine the game's joint and material batches. Keep those properties when adding or replacing parts. The runtime uses the fixed five pivots in `scripts/build-orc-blender.py`; changing the rig's joints also requires updating those pivots.
+Edit `assets/enemies/orc-rig.blend` to work on the current rig. The rebuild commands above regenerate it from the static source, so save any hand-edited work before rebuilding.
 
-Prefer Blender MCP for live edits and viewport inspection. The current source has been inspected and edited through its `get_scene_info`, `execute_blender_code`, and `get_viewport_screenshot` tools. The live scene is organized into anatomy, hair, equipment, and detail collections. To export through `execute_blender_code`, load `scripts/build-orc-blender.py` with `importlib.util`, populate its `MODELS` list with meshes carrying `creature_bone`, and call `export_batches()`. Save the `.blend` after editing. This keeps the GLB and packed game geometry synchronized.
+`node scripts/sculpt-creatures.mjs` rebuilds the slime's quantized closed sculpture. Slime details remain in `src/game/creature-models.ts`.
 
-For an offline batch export, run this from the repository root with PowerShell:
+Tests check attack timing, foot contact, deformation, eye tracking, shared geometry, culling, resource disposal, and slime birth. They retain the orc's 120,000-triangle upper budget without requiring an exact triangle or bone count. Slime sculpture tests check closed topology and winding. These checks do not judge artistic quality.
 
-```powershell
-& 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' assets/enemies/orc.blend --background --python scripts/build-orc-blender.py -- --export-only
-pnpm exec prettier --write src/game/orc-blender-data.json
-```
-
-This writes both the GLB and packed game buffers. It preserves the saved sculpture and paint. The GLB has skin weights and five joints; walk and punch animation remain in the game's pooled renderer. The GLB does not contain animation clips.
-
-To build the replacement in an empty Blender scene and replace the source and game exports:
-
-```powershell
-& 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' --background --factory-startup --python scripts/build-orc-replacement.py -- --publish
-pnpm exec prettier --write src/game/orc-blender-data.json
-```
-
-Without `--publish`, the script writes review assets to `local-artifacts/orc-replacement/`. Add `--no-render` to skip Cycles renders, or use `--anatomy` to inspect the unclothed sculpture. Supply the original concept at `local-artifacts/enemy-concepts/orc-concept.png` to reproduce the projected paint. Without it, the generator uses its material palette. The source packs the supplied reference.
-
-Use `--publish --render-only` to refresh the inspection renders from the saved source without rebuilding or exporting. Add `--view front`, `quarter`, `face`, or `rear` to render one view.
-
-`scripts/build-orc-blender.py` supplies mesh, paint, rig, and export utilities. Its previous sculpture builders have been removed, and the rejected mesh-refinement script has been deleted. Running it without `--export-only` delegates to the replacement builder.
-
-`node scripts/sculpt-creatures.mjs` rebuilds the slime's quantized closed sculpture. Clothing and other slime details remain in `src/game/creature-models.ts`.
-
-## Limits and verification
-
-The orc has no triangle budget. Sculpted surfaces are retained without decimation, and the game export uses 32-bit indices so larger meshes do not hit a 65,535-vertex batch limit. The exact triangle and buffer counts are recorded by the creature studio and the export log. The slime is unchanged.
-
-The Blender export tests check decoded attributes, normal lengths, color ranges, triangle areas, index bounds, GLB vertex paint, skin joints, and agreement between GLB and game triangle counts. Existing creature tests cover crowd submission, culling, shared textures, disposal, and slime birth behavior. Slime sculpture tests check closed topology and winding.
-
-Validation commands are `pnpm test`, `pnpm lint`, and `pnpm build`. The production build retains its large-chunk warning.
-
-Review images and measurements are saved in `local-artifacts/orc-replacement/`. Blender MCP provides live mesh edits and viewport inspection. The collaborative browser supports game inspection; older captures in that directory used headless Edge. Render checks validate submission and compilation, not artistic fidelity.
+Run `pnpm test`, `pnpm lint`, and `pnpm build`, then inspect the game and creature studio. The production build retains its large-chunk warning. Browser scripts capture screenshots or performance measurements; they do not compare screenshots or prove that animation looks good.

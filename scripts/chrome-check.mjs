@@ -13,11 +13,12 @@ try {
   await page.goto('http://localhost:5173/chrome-check');
   const report = await page.evaluate(async () => {
     const { Engine } = await import('/src/game/engine.ts');
+    const { parseSettings } = await import('/src/settings.ts');
     const e = new Engine(
       document.querySelector('#host'),
       () => {},
       () => {},
-      { quality: 'balanced', renderScale: 1, sensitivity: 1, sound: false },
+      { ...parseSettings(null), sound: false },
     );
     e.sim.reset();
     e.sim.phase = 'playing';
@@ -42,7 +43,7 @@ try {
   await page.close();
   const ui = await browser.newPage();
   await ui.goto('http://localhost:5173');
-  await ui.getByRole('button', { name: 'Open settings', exact: true }).click();
+  await ui.getByRole('button', { name: 'Status check', exact: true }).click();
   await ui.getByRole('button', { name: 'Copy performance report' }).click();
   await ui
     .getByRole('status')

@@ -1,26 +1,20 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { slimeSpawnScale } from './simulation';
-import { ORC, SLIME } from '../config/gameplay';
+import { SLIME } from '../config/gameplay';
 import { SLIME_ANIMATION } from '../config/rendering';
 import { MAX_ENEMIES } from '../config/runtime';
 import type { Enemy } from './simulation';
 import { buildCreatureGeometries } from './creature-models';
 import type { CreatureBone, CreatureSurface } from './creature-models';
-import { slimePaint, surfacePaint } from './creature-paint';
+import { slimePaint } from './creature-paint';
 import { loadOrcAsset, OrcRenderer } from './orc-renderer';
 import { OrcLocomotion } from './orc-animation';
 
 type Bone = CreatureBone;
 type Surface = CreatureSurface;
 type Part = { bone: Bone; mesh: THREE.InstancedMesh };
-type OrcModel = {
-  groups: Map<string, THREE.BufferGeometry[]>;
-  pivots: Record<string, number[]>;
-};
-
-// Model parts are authored once, merged by material and joint, and instanced for the horde.
-// No per-enemy meshes, textures, animation mixers, or allocations in the update loop.
+// Slimes share instanced parts. OrcRenderer owns the rigged orc pool.
 export class CreatureRenderer {
   private parts: Part[] = [];
   private disposed = false;
@@ -36,18 +30,8 @@ export class CreatureRenderer {
   private joint = new THREE.Object3D();
   private matrix = new THREE.Matrix4();
   private tint = new THREE.Color();
-  private transforms: Record<Bone, THREE.Matrix4> = {
-    body: new THREE.Matrix4(),
-    leftArm: new THREE.Matrix4(),
-    rightArm: new THREE.Matrix4(),
-    leftLeg: new THREE.Matrix4(),
-    rightLeg: new THREE.Matrix4(),
-    slime: new THREE.Matrix4(),
-  };
-  constructor(
-    private scene: THREE.Scene,
-    private orcModel?: OrcModel,
-  ) {
+  private slimeTransform = new THREE.Matrix4();
+  constructor(private scene: THREE.Scene) {
     const shadowMaterial = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
@@ -92,23 +76,6 @@ export class CreatureRenderer {
     this.spawnBubbles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(this.spawnBubbles);
     const material: Record<Surface, THREE.Material> = {
-      skin: new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.76,
-        map: surfacePaint('skin'),
-      }),
-      iron: new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        metalness: 0.32,
-        roughness: 0.58,
-        map: surfacePaint('iron'),
-      }),
-      leather: new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.83,
-        map: surfacePaint('leather'),
-        side: THREE.DoubleSide,
-      }),
       ivory: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4 }),
       dark: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }),
       eye: new THREE.MeshStandardMaterial({
@@ -126,30 +93,11 @@ export class CreatureRenderer {
         clearcoatRoughness: 0.6,
       }),
     };
-    for (const surface of ['iron', 'leather'] as const) {
-      const painted = material[surface] as THREE.MeshStandardMaterial;
-      const wear = new THREE.Color(surface === 'iron' ? '#7b7c7b' : '#80644b');
-      painted.onBeforeCompile = (shader) => {
-        shader.uniforms.creatureWearColor = { value: wear };
-        shader.fragmentShader = 'uniform vec3 creatureWearColor;\n' + shader.fragmentShader;
-        shader.fragmentShader = shader.fragmentShader.replace(
-          '#include <color_fragment>',
-          `#include <color_fragment>
-          #ifdef USE_MAP
-            diffuseColor.rgb = mix(diffuseColor.rgb, creatureWearColor, sampledDiffuseColor.a);
-            diffuseColor.a = 1.0;
-          #endif`,
-        );
-      };
-      painted.customProgramCacheKey = () => 'creature-painted-wear-v3';
-    }
-    // Material disposal is shared by the existing scene cleanup path.
-    for (const surface of ['skin', 'iron', 'leather', 'gel'] as const) {
-      material[surface].addEventListener('dispose', () => {
-        (material[surface] as THREE.MeshStandardMaterial).map?.dispose();
-      });
-    }
-    const groups = buildCreatureGeometries(orcModel?.groups);
+    // The engine disposes scene materials; release their shared texture with them.
+    material.gel.addEventListener('dispose', () => {
+      (material.gel as THREE.MeshStandardMaterial).map?.dispose();
+    });
+    const groups = buildCreatureGeometries();
 
     for (const [key, geometries] of groups) {
       const [bone, surface] = key.split(':') as [Bone, Surface];
@@ -172,32 +120,12 @@ export class CreatureRenderer {
   loadOrc() {
     return (this.orcLoading ??= this.replaceOrc());
   }
-  private releaseParts(parts: Part[], retained: Part[] = []) {
-    const materials = (part: Part) =>
-      Array.isArray(part.mesh.material) ? part.mesh.material : [part.mesh.material];
-    const retainedMaterials = new Set(retained.flatMap(materials));
-    const releasedMaterials = new Set(parts.flatMap(materials));
-    for (const { mesh } of parts) {
-      mesh.removeFromParent();
-      mesh.geometry.dispose();
-      mesh.dispose();
-    }
-    for (const material of releasedMaterials) {
-      if (!retainedMaterials.has(material)) material.dispose();
-    }
-  }
   private async replaceOrc() {
     const imported = new OrcRenderer(this.scene, await loadOrcAsset());
     if (this.disposed) {
       imported.dispose();
       return;
     }
-    const retained = this.parts.filter((part) => part.bone === 'slime');
-    this.releaseParts(
-      this.parts.filter((part) => part.bone !== 'slime'),
-      retained,
-    );
-    this.parts = retained;
     this.riggedOrcs = imported;
   }
   // The engine disposes scene resources. Stop an outstanding load from adding new ones afterward.
@@ -213,7 +141,6 @@ export class CreatureRenderer {
       this.frustum.setFromProjectionMatrix(this.viewProjection);
     }
     let slimes = 0,
-      orcs = 0,
       shadows = 0,
       bubbles = 0;
     for (let slot = 0; slot < enemies.length; slot++) {
@@ -226,7 +153,7 @@ export class CreatureRenderer {
       this.bounds.center.set(e.x, 1.4, e.z);
       if (camera && !this.frustum.intersectsSphere(this.bounds)) continue;
       const angle = Math.atan2(playerX - e.x, playerZ - e.z),
-        stride = time * (e.kind ? 6 : 3) + e.phase;
+        stride = time * 3 + e.phase;
       const attacking = e.windup > 0;
       if (e.kind && this.riggedOrcs) {
         this.riggedOrcs.update(
@@ -249,32 +176,7 @@ export class CreatureRenderer {
       this.root.position.set(e.x, 0, e.z);
       this.root.rotation.set(0, angle, 0);
       this.root.scale.set(1, 1, 1);
-      if (e.kind && !this.riggedOrcs) {
-        this.root.position.y = Math.abs(Math.sin(stride)) * 0.035;
-        this.root.rotation.z = Math.sin(stride) * 0.015;
-        this.root.updateMatrix();
-        this.transforms.body.copy(this.root.matrix);
-        for (const side of this.orcModel ? [-1, 1] : []) {
-          const arm: Bone = side < 0 ? 'leftArm' : 'rightArm',
-            leg: Bone = side < 0 ? 'leftLeg' : 'rightLeg';
-          const swing = attacking ? 0 : Math.sin(stride) * side * 0.42;
-          const attack =
-            attacking && side > 0
-              ? -1.7 * Math.sin((1 - e.windup / ORC.ATTACK_WINDUP_SECONDS) * Math.PI)
-              : 0;
-          const armPivot = this.orcModel!.pivots[arm];
-          this.joint.position.set(armPivot[0], armPivot[1], armPivot[2]);
-          this.joint.rotation.set(-swing * 0.7 + attack, 0, 0);
-          this.joint.scale.set(1, 1, 1);
-          this.joint.updateMatrix();
-          this.transforms[arm].multiplyMatrices(this.root.matrix, this.joint.matrix);
-          const legPivot = this.orcModel!.pivots[leg];
-          this.joint.position.set(legPivot[0], legPivot[1], legPivot[2]);
-          this.joint.rotation.set(swing, 0, 0);
-          this.joint.updateMatrix();
-          this.transforms[leg].multiplyMatrices(this.root.matrix, this.joint.matrix);
-        }
-      } else if (!e.kind) {
+      if (!e.kind) {
         const bounce = Math.sin(stride),
           windup = attacking ? Math.sin((1 - e.windup / SLIME.ATTACK_WINDUP_SECONDS) * Math.PI) : 0;
         this.root.position.x += Math.sin(angle) * windup * 0.2;
@@ -287,7 +189,7 @@ export class CreatureRenderer {
         );
         this.root.rotation.z = Math.sin(stride * 0.5) * 0.04 * birthHeight;
         this.root.updateMatrix();
-        this.transforms.slime.copy(this.root.matrix);
+        this.slimeTransform.copy(this.root.matrix);
         if (e.spawnRemaining > 0) {
           const elapsed = SLIME.SPAWN_DURATION_SECONDS - e.spawnRemaining,
             progress = elapsed / SLIME.SPAWN_DURATION_SECONDS;
@@ -311,14 +213,13 @@ export class CreatureRenderer {
           }
         }
       }
-      const index = e.kind ? orcs++ : slimes++;
+      if (e.kind) continue;
+      const index = slimes++;
       this.tint.setRGB(e.flash > 0 ? 1.7 : 1, e.flash > 0 ? 1.35 : 1, e.flash > 0 ? 1.2 : 1);
       for (const p of this.parts) {
-        if ((p.bone === 'slime') === (e.kind === 0)) {
-          this.matrix.copy(this.transforms[p.bone]);
-          p.mesh.setMatrixAt(index, this.matrix);
-          p.mesh.setColorAt(index, this.tint);
-        }
+        this.matrix.copy(this.slimeTransform);
+        p.mesh.setMatrixAt(index, this.matrix);
+        p.mesh.setColorAt(index, this.tint);
       }
     }
     this.shadows.count = shadows;
@@ -326,7 +227,7 @@ export class CreatureRenderer {
     this.spawnBubbles.count = bubbles;
     this.spawnBubbles.instanceMatrix.needsUpdate = true;
     for (const p of this.parts) {
-      p.mesh.count = p.bone === 'slime' ? slimes : orcs;
+      p.mesh.count = slimes;
       p.mesh.instanceMatrix.needsUpdate = true;
       if (p.mesh.instanceColor) p.mesh.instanceColor.needsUpdate = true;
     }

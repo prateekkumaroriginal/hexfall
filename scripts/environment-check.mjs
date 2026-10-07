@@ -15,11 +15,12 @@ try {
   await page.goto('http://localhost:5173/environment-check');
   await page.evaluate(async () => {
     const { Engine } = await import('/src/game/engine.ts');
+    const { parseSettings } = await import('/src/settings.ts');
     window.engine = new Engine(
       document.querySelector('#host'),
       () => {},
       () => {},
-      { quality: 'balanced', renderScale: 1, sensitivity: 1, sound: false },
+      { ...parseSettings(null), sound: false },
     );
     cancelAnimationFrame(window.engine.frame);
   });

@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { sculptedGeometry } from './creature-sculpt';
 
-export type CreatureBone = 'body' | 'leftArm' | 'rightArm' | 'leftLeg' | 'rightLeg' | 'slime';
-export type CreatureSurface = 'skin' | 'iron' | 'leather' | 'ivory' | 'dark' | 'eye' | 'gel';
+export type CreatureBone = 'slime';
+export type CreatureSurface = 'ivory' | 'dark' | 'eye' | 'gel';
 type XYZ = [number, number, number];
 
 const gaussian = (value: number) => Math.exp(-value * value);
 
-export function buildCreatureGeometries(groups = new Map<string, THREE.BufferGeometry[]>()) {
+export function buildCreatureGeometries() {
+  const groups = new Map<string, THREE.BufferGeometry[]>();
   const faceRay = new THREE.Raycaster();
   const add = (
     bone: CreatureBone,
@@ -112,7 +113,7 @@ export function buildCreatureGeometries(groups = new Map<string, THREE.BufferGeo
         );
       }
     }
-    if (surface === 'skin' || surface === 'ivory' || surface === 'dark') {
+    if (surface === 'ivory' || surface === 'dark') {
       const positions = Array.from(p.array),
         uv = Array.from(geometry.getAttribute('uv').array),
         indices = Array.from(geometry.index!.array);

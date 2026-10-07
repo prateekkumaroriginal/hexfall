@@ -17,13 +17,15 @@ try {
   await page.goto('http://localhost:5173/performance-check');
   const result = await page.evaluate(async () => {
     const { Engine } = await import('/src/game/engine.ts');
+    const { parseSettings } = await import('/src/settings.ts');
     const engine = new Engine(
       document.getElementById('host'),
       () => {},
       () => {},
-      { quality: 'balanced', renderScale: 1, sensitivity: 1, sound: false },
+      { ...parseSettings(null), sound: false },
     );
     cancelAnimationFrame(engine.frame);
+    await engine.creatures.loadOrc();
     engine.camera.position.set(0, 1.6, 9);
     engine.camera.lookAt(0, 1.6, -10);
     engine.staff.visible = true;

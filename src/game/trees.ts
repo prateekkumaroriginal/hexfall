@@ -141,15 +141,15 @@ function sculptCanopy(seed: number, spread: number) {
           id(x + 1, y, z + 1),
           id(x + 1, y + 1, z + 1),
           id(x, y + 1, z + 1),
-        ];
+        ] as const;
         if (
           corners.every((i) => at(samples, i).d >= 0) ||
           corners.every((i) => at(samples, i).d < 0)
         )
           continue;
         for (const tetra of tetrahedra) {
-          const inside = tetra.map((i) => at(corners, i)).filter((i) => at(samples, i).d < 0);
-          const outside = tetra.map((i) => at(corners, i)).filter((i) => at(samples, i).d >= 0);
+          const inside = tetra.map((i) => corners[i]).filter((i) => at(samples, i).d < 0);
+          const outside = tetra.map((i) => corners[i]).filter((i) => at(samples, i).d >= 0);
           if (!inside.length || !outside.length) continue;
           if (inside.length === 1) {
             const a = at(inside, 0);

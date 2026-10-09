@@ -33,6 +33,8 @@ export function sculptedGeometry(name: keyof typeof data) {
     const attributes = Object.fromEntries(
       Object.entries(geometry.attributes).map(([key, value]) => [key, Array.from(value.array)]),
     );
+    const seamPositions = required(attributes['position']);
+    const seamUv = required(attributes['uv']);
     const duplicates = new Map<number, number>();
     for (let triangle = 0; triangle < indices.length; triangle += 3) {
       const face = indices.slice(triangle, triangle + 3);
@@ -42,25 +44,25 @@ export function sculptedGeometry(name: keyof typeof data) {
         if (at(uv, index * 2) >= 0.5) return;
         let duplicate = duplicates.get(index);
         if (duplicate === undefined) {
-          duplicate = required(attributes['position']).length / 3;
+          duplicate = seamPositions.length / 3;
           for (const [key, attribute] of Object.entries(geometry.attributes)) {
             const values = required(attributes[key]);
             for (let c = 0; c < attribute.itemSize; c++)
               values.push(at(attribute.array, index * attribute.itemSize + c));
           }
-          required(attributes['uv'])[duplicate * 2] =
-            at(required(attributes['uv']), duplicate * 2) + 1;
+          seamUv[duplicate * 2] = at(seamUv, duplicate * 2) + 1;
           duplicates.set(index, duplicate);
         }
         indices[triangle + corner] = duplicate;
       });
     }
     for (const [key, attribute] of Object.entries(geometry.attributes)) {
+      const values = required(attributes[key]);
       geometry.setAttribute(
         key,
         key === 'sculptShade'
-          ? new THREE.Uint8BufferAttribute(required(attributes[key]), attribute.itemSize, true)
-          : new THREE.Float32BufferAttribute(required(attributes[key]), attribute.itemSize),
+          ? new THREE.Uint8BufferAttribute(values, attribute.itemSize, true)
+          : new THREE.Float32BufferAttribute(values, attribute.itemSize),
       );
     }
     geometry.setIndex(indices);

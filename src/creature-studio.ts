@@ -230,15 +230,11 @@ function render() {
       const ys = ids.map((id) => at(world, id * 3 + 1));
       const firstBand = Math.max(
         0,
-        Math.ceil(
-          ((Math.min(at(ys, 0), at(ys, 1), at(ys, 2)) - bounds.min.y) * 12) / size.y - 0.5 - 1e-9,
-        ),
+        Math.ceil(((Math.min(...ys) - bounds.min.y) * 12) / size.y - 0.5 - 1e-9),
       );
       const lastBand = Math.min(
         11,
-        Math.floor(
-          ((Math.max(at(ys, 0), at(ys, 1), at(ys, 2)) - bounds.min.y) * 12) / size.y - 0.5 + 1e-9,
-        ),
+        Math.floor(((Math.max(...ys) - bounds.min.y) * 12) / size.y - 0.5 + 1e-9),
       );
       // Most sculpt triangles span none of the twelve measurement planes.
       // Visit only intersecting planes while retaining the exact edge test.
@@ -250,9 +246,11 @@ function render() {
           const ay = at(world, a + 1),
             by = at(world, b + 1);
           if (ay < y === by < y || ay === by) continue;
-          const x = at(world, a) + ((at(world, b) - at(world, a)) * (y - ay)) / (by - ay);
-          at(profile, band).minX = Math.min(at(profile, band).minX, x);
-          at(profile, band).maxX = Math.max(at(profile, band).maxX, x);
+          const ax = at(world, a);
+          const x = ax + ((at(world, b) - ax) * (y - ay)) / (by - ay);
+          const entry = at(profile, band);
+          entry.minX = Math.min(entry.minX, x);
+          entry.maxX = Math.max(entry.maxX, x);
         }
       }
     }

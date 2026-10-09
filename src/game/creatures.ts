@@ -75,7 +75,7 @@ export class CreatureRenderer {
     this.spawnBubbles.frustumCulled = false;
     this.spawnBubbles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(this.spawnBubbles);
-    const material: Record<Surface, THREE.Material> = {
+    const material = {
       ivory: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4 }),
       dark: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }),
       eye: new THREE.MeshStandardMaterial({
@@ -92,15 +92,15 @@ export class CreatureRenderer {
         clearcoat: 0.18,
         clearcoatRoughness: 0.6,
       }),
-    };
+    } satisfies Record<Surface, THREE.Material>;
     // The engine disposes scene materials; release their shared texture with them.
     material.gel.addEventListener('dispose', () => {
-      (material.gel as THREE.MeshStandardMaterial).map?.dispose();
+      material.gel.map?.dispose();
     });
     const groups = buildCreatureGeometries();
 
-    for (const [key, geometries] of groups) {
-      const [bone, surface] = key.split(':') as [Bone, Surface];
+    for (const { bone, surface, geometries } of groups) {
+      const key = `${bone}:${surface}`;
       const merged = mergeGeometries(geometries);
       if (!merged) throw new Error(`Failed to build creature part ${key}`);
       for (const g of geometries) g.dispose();
@@ -133,7 +133,13 @@ export class CreatureRenderer {
     this.disposed = true;
     this.riggedOrcs?.dispose();
   }
-  update(enemies: Enemy[], time: number, playerX: number, playerZ: number, camera?: THREE.Camera) {
+  update(
+    enemies: readonly Enemy[],
+    time: number,
+    playerX: number,
+    playerZ: number,
+    camera?: THREE.Camera,
+  ) {
     this.riggedOrcs?.beginFrame();
     if (camera) {
       camera.updateMatrixWorld();
@@ -143,19 +149,18 @@ export class CreatureRenderer {
     let slimes = 0,
       shadows = 0,
       bubbles = 0;
-    for (let slot = 0; slot < enemies.length; slot++) {
-      const e = enemies[slot];
+    for (const [slot, e] of enemies.entries()) {
       if (!e.active) {
         this.orcLocomotion.reset(slot);
         continue;
       }
-      if (e.kind && this.riggedOrcs) this.orcLocomotion.update(slot, e, time);
+      if (e.id === 'orc' && this.riggedOrcs) this.orcLocomotion.update(slot, e, time);
       this.bounds.center.set(e.x, 1.4, e.z);
       if (camera && !this.frustum.intersectsSphere(this.bounds)) continue;
       const angle = Math.atan2(playerX - e.x, playerZ - e.z),
         stride = time * 3 + e.phase;
       const attacking = e.windup > 0;
-      if (e.kind && this.riggedOrcs) {
+      if (e.id === 'orc' && this.riggedOrcs) {
         this.riggedOrcs.update(
           slot,
           e,
@@ -166,17 +171,17 @@ export class CreatureRenderer {
           time,
         );
       }
-      const birthWidth = e.kind ? 1 : slimeSpawnScale(e.spawnRemaining),
-        birthHeight = e.kind ? 1 : slimeSpawnScale(e.spawnRemaining, true);
+      const birthWidth = e.id === 'orc' ? 1 : slimeSpawnScale(e.spawnRemaining),
+        birthHeight = e.id === 'orc' ? 1 : slimeSpawnScale(e.spawnRemaining, true);
       this.joint.position.set(e.x, 0.065, e.z);
       this.joint.rotation.set(0, angle, 0);
-      this.joint.scale.setScalar(e.kind ? 0.8 : birthWidth);
+      this.joint.scale.setScalar(e.id === 'orc' ? 0.8 : birthWidth);
       this.joint.updateMatrix();
       this.shadows.setMatrixAt(shadows++, this.joint.matrix);
       this.root.position.set(e.x, 0, e.z);
       this.root.rotation.set(0, angle, 0);
       this.root.scale.set(1, 1, 1);
-      if (!e.kind) {
+      if (e.id === 'slime') {
         const bounce = Math.sin(stride),
           windup = attacking ? Math.sin((1 - e.windup / SLIME.ATTACK_WINDUP_SECONDS) * Math.PI) : 0;
         this.root.position.x += Math.sin(angle) * windup * 0.2;
@@ -213,7 +218,7 @@ export class CreatureRenderer {
           }
         }
       }
-      if (e.kind) continue;
+      if (e.id === 'orc') continue;
       const index = slimes++;
       this.tint.setRGB(e.flash > 0 ? 1.7 : 1, e.flash > 0 ? 1.35 : 1, e.flash > 0 ? 1.2 : 1);
       for (const p of this.parts) {

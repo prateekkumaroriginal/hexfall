@@ -1,7 +1,9 @@
+import { assign } from './lib/assign';
+import { isInstancedMesh, isMesh, isSkinnedMesh } from './game/three-types';
+import { at, required } from './lib/assert';
 import * as THREE from 'three';
 import { CreatureRenderer } from './game/creatures';
 import { Simulation } from './game/simulation';
-
 const scene = new THREE.Scene();
 scene.background = null;
 document.body.style.background =
@@ -27,24 +29,38 @@ const sim = new Simulation();
 sim.enemies.forEach((enemy) => {
   enemy.active = false;
 });
-Object.assign(sim.enemies[0], { active: true, kind: 1, x: 0, z: 0, phase: 0, spawnRemaining: 0 });
+assign(at(sim.enemies, 0), {
+  active: true,
+  id: 'orc',
+  x: 0,
+  z: 0,
+  phase: 0,
+  spawnRemaining: 0,
+});
 const camera = new THREE.OrthographicCamera();
 let view = 'front';
 creatures.update(sim.enemies, 0, 0, 10);
 const parts: THREE.Mesh[] = [];
 scene.traverse((o) => {
-  if (o instanceof THREE.Mesh && o.name.startsWith('creature-')) parts.push(o);
+  if (isMesh(o) && o.name.startsWith('creature-')) parts.push(o);
 });
 function visible(part: THREE.Mesh) {
-  if (part instanceof THREE.InstancedMesh) return part.count > 0;
+  if (isInstancedMesh(part)) return part.count > 0;
   for (let o: THREE.Object3D | null = part; o; o = o.parent) if (!o.visible) return false;
   return true;
 }
 function partMatrix(part: THREE.Mesh, matrix: THREE.Matrix4) {
-  if (part instanceof THREE.InstancedMesh) part.getMatrixAt(0, matrix);
+  if (isInstancedMesh(part)) part.getMatrixAt(0, matrix);
   else matrix.copy(part.matrixWorld);
 }
-const materials = new Set(parts.map((part) => part.material as THREE.MeshStandardMaterial));
+const materials = new Set(
+  parts
+    .flatMap((part) => (Array.isArray(part.material) ? part.material : [part.material]))
+    .filter(
+      (material): material is THREE.MeshStandardMaterial =>
+        material instanceof THREE.MeshStandardMaterial,
+    ),
+);
 const original = new Map(
   [...materials].map((m) => [m, { map: m.map, vertexColors: m.vertexColors }]),
 );
@@ -55,34 +71,34 @@ const referenceCanvas = document.createElement('canvas');
 referenceCanvas.style.cssText = 'position:absolute;right:0;top:0;pointer-events:none;display:none';
 document.body.append(referenceCanvas);
 const references = [new Image(), new Image()];
-references[0].src = '/local-artifacts/enemy-concepts/slime-concept.png';
-references[1].src = '/local-artifacts/enemy-concepts/orc-concept.png';
+at(references, 0).src = '/local-artifacts/enemy-concepts/slime-concept.png';
+at(references, 1).src = '/local-artifacts/enemy-concepts/orc-concept.png';
 references.forEach((image) => {
   image.onload = () => render();
   image.onerror = () => render();
 });
 const compareButton = document.createElement('button');
 compareButton.textContent = 'Concept comparison';
-document.querySelector('nav')!.append(compareButton);
+required(document.querySelector('nav')).append(compareButton);
 compareButton.onclick = () => {
   compare = !compare;
   render();
 };
 const exportButton = document.createElement('button');
 exportButton.textContent = 'Export measurements';
-document.querySelector('nav')!.append(exportButton);
+required(document.querySelector('nav')).append(exportButton);
 exportButton.onclick = () => {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(metrics, null, 2)], { type: 'application/json' }),
   );
   const link = document.createElement('a');
   link.href = url;
-  link.download = `creature-${sim.enemies[0].kind ? 'orc' : 'slime'}.json`;
+  link.download = `creature-${at(sim.enemies, 0).id}.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 function render() {
-  const orc = sim.enemies[0].kind === 1;
+  const orc = at(sim.enemies, 0).id === 'orc';
   const viewportWidth = compare ? Math.floor(innerWidth / 2) : innerWidth;
   const height =
     view === 'face'
@@ -140,11 +156,11 @@ function render() {
   if (compare) {
     referenceCanvas.width = width;
     referenceCanvas.height = innerHeight;
-    const ctx = referenceCanvas.getContext('2d')!;
+    const ctx = required(referenceCanvas.getContext('2d'));
     ctx.fillStyle = '#272923';
     ctx.fillRect(0, 0, width, innerHeight);
-    const source = references[orc ? 1 : 0];
-    const crop = orc
+    const source = at(references, orc ? 1 : 0);
+    const crop: [number, number, number, number] = orc
       ? view === 'rear'
         ? [1190, 128, 278, 453]
         : view === 'face'
@@ -183,12 +199,12 @@ function render() {
     const matrix = new THREE.Matrix4();
     partMatrix(part, matrix);
     part.geometry.computeBoundingBox();
-    if (part instanceof THREE.SkinnedMesh) {
+    if (isSkinnedMesh(part)) {
       part.computeBoundingBox();
-      bounds.union(part.boundingBox!.clone().applyMatrix4(matrix));
-    } else bounds.union(part.geometry.boundingBox!.clone().applyMatrix4(matrix));
+      bounds.union(required(part.boundingBox).clone().applyMatrix4(matrix));
+    } else bounds.union(required(part.geometry.boundingBox).clone().applyMatrix4(matrix));
   }
-  document.querySelector('#stats')!.textContent =
+  required(document.querySelector('#stats')).textContent =
     `${renderer.info.render.triangles.toLocaleString()} triangles · ${renderer.info.render.calls} calls\nBounds ${bounds
       .getSize(new THREE.Vector3())
       .toArray()
@@ -206,39 +222,43 @@ function render() {
       part.getVertexPosition(i, position).applyMatrix4(matrix);
       position.toArray(world, i * 3);
     }
-    const indices = part.geometry.index!;
+    const indices = required(part.geometry.index);
     // Intersect triangles with horizontal planes. Vertex-only bins miss the
     // silhouette where the decimator left long triangles on smooth surfaces.
     for (let t = 0; t < indices.count; t += 3) {
       const ids = [indices.getX(t), indices.getX(t + 1), indices.getX(t + 2)];
-      const ys = ids.map((id) => world[id * 3 + 1]);
+      const ys = ids.map((id) => at(world, id * 3 + 1));
       const firstBand = Math.max(
         0,
-        Math.ceil(((Math.min(ys[0], ys[1], ys[2]) - bounds.min.y) * 12) / size.y - 0.5 - 1e-9),
+        Math.ceil(
+          ((Math.min(at(ys, 0), at(ys, 1), at(ys, 2)) - bounds.min.y) * 12) / size.y - 0.5 - 1e-9,
+        ),
       );
       const lastBand = Math.min(
         11,
-        Math.floor(((Math.max(ys[0], ys[1], ys[2]) - bounds.min.y) * 12) / size.y - 0.5 + 1e-9),
+        Math.floor(
+          ((Math.max(at(ys, 0), at(ys, 1), at(ys, 2)) - bounds.min.y) * 12) / size.y - 0.5 + 1e-9,
+        ),
       );
       // Most sculpt triangles span none of the twelve measurement planes.
       // Visit only intersecting planes while retaining the exact edge test.
       for (let band = firstBand; band <= lastBand; band++) {
         const y = bounds.min.y + ((band + 0.5) * size.y) / 12;
         for (let edge = 0; edge < 3; edge++) {
-          const a = ids[edge] * 3,
-            b = ids[(edge + 1) % 3] * 3;
-          const ay = world[a + 1],
-            by = world[b + 1];
+          const a = at(ids, edge) * 3,
+            b = at(ids, (edge + 1) % 3) * 3;
+          const ay = at(world, a + 1),
+            by = at(world, b + 1);
           if (ay < y === by < y || ay === by) continue;
-          const x = world[a] + ((world[b] - world[a]) * (y - ay)) / (by - ay);
-          profile[band].minX = Math.min(profile[band].minX, x);
-          profile[band].maxX = Math.max(profile[band].maxX, x);
+          const x = at(world, a) + ((at(world, b) - at(world, a)) * (y - ay)) / (by - ay);
+          at(profile, band).minX = Math.min(at(profile, band).minX, x);
+          at(profile, band).maxX = Math.max(at(profile, band).maxX, x);
         }
       }
     }
   }
   metrics = {
-    kind: orc ? 'orc' : 'slime',
+    id: orc ? 'orc' : 'slime',
     pose: 'neutral',
     bounds: { min: bounds.min.toArray(), max: bounds.max.toArray(), size: size.toArray() },
     widthToHeight: size.x / size.y,
@@ -261,25 +281,28 @@ function render() {
 document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(
   (button) =>
     (button.onclick = () => {
-      view = button.dataset.view!;
+      view = required(button.dataset['view']);
       render();
     }),
 );
-document.querySelector<HTMLSelectElement>('#kind')!.onchange = (e) => {
-  sim.enemies[0].kind = Number((e.target as HTMLSelectElement).value) as 0 | 1;
+const creatureSelect = required(document.querySelector<HTMLSelectElement>('#id'));
+creatureSelect.onchange = () => {
+  const id = creatureSelect.value;
+  if (id !== 'orc' && id !== 'slime') throw new Error(`Unknown creature ${id}`);
+  at(sim.enemies, 0).id = id;
   render();
 };
-document.querySelector<HTMLButtonElement>('#clay')!.onclick = () => {
+required(document.querySelector<HTMLButtonElement>('#clay')).onclick = () => {
   clay = !clay;
   materials.forEach((m) => {
-    m.map = clay ? null : original.get(m)!.map;
+    m.map = clay ? null : required(original.get(m)).map;
     m.vertexColors = !clay;
     m.color.set(clay ? '#a7a28e' : '#ffffff');
     m.needsUpdate = true;
   });
   render();
 };
-document.querySelector<HTMLButtonElement>('#wire')!.onclick = () => {
+required(document.querySelector<HTMLButtonElement>('#wire')).onclick = () => {
   materials.forEach((m) => {
     m.wireframe = !m.wireframe;
   });

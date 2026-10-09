@@ -42,8 +42,8 @@ try {
     const creatures = new CreatureRenderer(scene),
       sim = new Simulation();
     await creatures.loadOrc();
-    Object.assign(sim.enemies[0], { active: true, kind: 0, x: -1.65, z: 0, hp: 3, phase: 0 });
-    Object.assign(sim.enemies[1], { active: true, kind: 1, x: 1.25, z: 0, hp: 6, phase: 0 });
+    Object.assign(sim.enemies[0], { active: true, id: 'slime', x: -1.65, z: 0, hp: 3, phase: 0 });
+    Object.assign(sim.enemies[1], { active: true, id: 'orc', x: 1.25, z: 0, hp: 6, phase: 0 });
     const camera = new THREE.PerspectiveCamera(38, 1.4, 0.1, 50);
     camera.position.set(3.8, 3.1, 9);
     camera.lookAt(0, 1.3, 0);
@@ -65,7 +65,7 @@ try {
     for (let i = 0; i < sim.enemies.length; i++)
       Object.assign(sim.enemies[i], {
         active: true,
-        kind: i % 2,
+        id: i % 2 ? 'orc' : 'slime',
         x: ((i % 8) - 3.5) * 2.6,
         z: -Math.floor(i / 8) * 3,
         phase: i * 0.7,

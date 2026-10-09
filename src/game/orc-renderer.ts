@@ -1,6 +1,8 @@
+import { isGroup, isMesh, isSkinnedMesh } from './three-types';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { validateOrcAsset, validateOrcRig } from './orc-rig';
+import type { OrcAsset } from './orc-rig';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { createOrcEyeGeometry, OrcEyes } from './orc-eyes';
 import { OrcFreeArm } from './orc-free-arm';
@@ -19,21 +21,7 @@ function blinkPulse(time: number, center: number, duration: number) {
 
 export async function loadOrcAsset() {
   const asset = await new GLTFLoader().loadAsync(ORC_MODEL_URL);
-  for (const name of ['Idle', 'Walk', 'Punch']) {
-    if (!asset.animations.some((clip) => clip.name === name))
-      throw new Error(`Missing orc ${name} animation`);
-  }
-  const faces: THREE.SkinnedMesh[] = [];
-  asset.scene.traverse((object) => {
-    if (object instanceof THREE.SkinnedMesh) faces.push(object);
-  });
-  for (const name of ['Blink', 'JawOpen', 'BrowTense']) {
-    if (!faces.some((mesh) => mesh.morphTargetDictionary?.[name] !== undefined))
-      throw new Error(`Missing orc ${name} pose`);
-  }
-  if (!faces.some((mesh) => mesh.userData.orc_eye_centers?.length === 6))
-    throw new Error('Missing orc eye landmarks');
-  return asset;
+  return validateOrcAsset(asset);
 }
 
 type Orc = {
@@ -44,7 +32,7 @@ type Orc = {
   punch: THREE.AnimationAction;
   eyes: OrcEyes;
   freeArm: OrcFreeArm;
-  face: THREE.SkinnedMesh;
+  influences: number[];
   blink: number;
   jaw: number;
   brow: number;
@@ -58,10 +46,11 @@ export class OrcRenderer {
   private eyeTarget = new THREE.Vector3();
   constructor(
     private scene: THREE.Scene,
-    private asset: GLTF,
+    private asset: OrcAsset,
   ) {
+    validateOrcRig(asset.scene);
     asset.scene.traverse((object) => {
-      if (object instanceof THREE.SkinnedMesh)
+      if (isSkinnedMesh(object))
         for (const material of Array.isArray(object.material) ? object.material : [object.material])
           prepareOrcSkinMaterial(material);
     });
@@ -80,31 +69,31 @@ export class OrcRenderer {
   ) {
     let orc = this.orcs[slot];
     if (!orc) {
-      const root = clone(this.asset.scene) as THREE.Group;
+      const root = clone(this.asset.scene);
+      if (!isGroup(root)) throw new Error('Invalid cloned orc root');
+      const rig = validateOrcRig(root);
       root.name = `orc-${slot}`;
       root.traverse((object) => {
-        if (object instanceof THREE.SkinnedMesh) {
+        if (isSkinnedMesh(object)) {
           object.name = `creature-orc-${slot}`;
           object.frustumCulled = false;
         }
       });
       const mixer = new THREE.AnimationMixer(root);
-      const action = (name: string) =>
-        mixer.clipAction(this.asset.animations.find((clip) => clip.name === name)!).play();
-      const face = root.getObjectByName(`creature-orc-${slot}`) as THREE.SkinnedMesh;
-      const expressions = face.morphTargetDictionary!;
+      const action = (name: keyof OrcAsset['clips']) =>
+        mixer.clipAction(this.asset.clips[name]).play();
       orc = {
         root,
         mixer,
         idle: action('Idle'),
         walk: action('Walk'),
         punch: action('Punch'),
-        eyes: new OrcEyes(face, slot, this.eyeGeometry, this.eyeMaterial),
-        freeArm: new OrcFreeArm(root),
-        face,
-        blink: expressions.Blink,
-        jaw: expressions.JawOpen,
-        brow: expressions.BrowTense,
+        eyes: new OrcEyes(rig, slot, this.eyeGeometry, this.eyeMaterial),
+        freeArm: new OrcFreeArm(root, rig.freeArm),
+        influences: rig.influences,
+        blink: rig.expressions.Blink,
+        jaw: rig.expressions.JawOpen,
+        brow: rig.expressions.BrowTense,
       };
       this.orcs[slot] = orc;
       this.scene.add(root);
@@ -155,12 +144,13 @@ export class OrcRenderer {
       enemy.windup > 0
         ? THREE.MathUtils.smoothstep(attackTime, 0, 0.45)
         : 1 - THREE.MathUtils.smoothstep(attackTime, impactTime, impactTime + 0.2);
-    const influences = orc.face.morphTargetInfluences!;
-    influences[orc.blink] = Math.max(
+    const influences = orc.influences;
+    const blink = Math.max(
       blinkPulse(blinkTime, 1.9, 0.18),
       blinkPulse(blinkTime, 6.25, 0.16),
       blinkPulse(blinkTime, 6.51, 0.14) * 0.75,
     );
+    influences[orc.blink] = blink;
     // Keep the jaw closed through the wind-up, strike, and recovery.
     influences[orc.jaw] = attacking ? 0 : 0.035 + 0.025 * Math.sin(expressionTime * 1.7);
     influences[orc.brow] = 0.1 + 0.05 * Math.sin(expressionTime * 0.9) + 0.65 * exertion;
@@ -171,7 +161,7 @@ export class OrcRenderer {
       Number.isFinite(targetDistance) ? targetDistance : 10000,
     );
     orc.root.localToWorld(this.eyeTarget);
-    orc.eyes.update(this.eyeTarget, influences[orc.blink]);
+    orc.eyes.update(this.eyeTarget, blink);
     orc.root.updateMatrixWorld(true);
   }
   dispose() {
@@ -182,13 +172,13 @@ export class OrcRenderer {
     materials.add(this.eyeMaterial);
     const collect = (root: THREE.Object3D) =>
       root.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
+        if (isMesh(object)) {
           geometries.add(object.geometry);
           for (const material of Array.isArray(object.material)
             ? object.material
             : [object.material])
             materials.add(material);
-          if (object instanceof THREE.SkinnedMesh) skeletons.add(object.skeleton);
+          if (isSkinnedMesh(object)) skeletons.add(object.skeleton);
         }
       });
     collect(this.asset.scene);
@@ -209,7 +199,8 @@ export class OrcRenderer {
     for (const geometry of geometries) geometry.dispose();
     for (const texture of textures) {
       texture.dispose();
-      texture.source.data?.close?.();
+      const data: unknown = texture.source.data;
+      if (typeof ImageBitmap !== 'undefined' && data instanceof ImageBitmap) data.close();
     }
     this.orcs = [];
   }

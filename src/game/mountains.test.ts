@@ -1,8 +1,8 @@
+import { required, at } from '../lib/assert';
 import * as THREE from 'three';
 import { expect, it } from 'vitest';
 import { buildMountains } from './mountains';
 import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH } from '../config/world';
-
 it('encloses every approach without placing mountain geometry inside the arena', () => {
   const scene = new THREE.Scene();
   const mountains = buildMountains(scene);
@@ -21,7 +21,7 @@ it('encloses every approach without placing mountain geometry inside the arena',
       );
     }
     mountains.geometry.computeBoundingBox();
-    expect(mountains.geometry.boundingBox!.max.y).toBeGreaterThan(40);
+    expect(required(mountains.geometry.boundingBox).max.y).toBeGreaterThan(40);
     expect(positions.count / 3).toBeLessThan(15000);
     mountains.updateMatrixWorld();
     const raycaster = new THREE.Raycaster();
@@ -33,7 +33,7 @@ it('encloses every approach without placing mountain geometry inside the arena',
       );
       const hits = raycaster.intersectObject(mountains);
       expect(hits.length).toBeGreaterThan(0);
-      expect(hits[0].distance).toBeLessThan(50);
+      expect(at(hits, 0).distance).toBeLessThan(50);
     }
   } finally {
     mountains.geometry.dispose();

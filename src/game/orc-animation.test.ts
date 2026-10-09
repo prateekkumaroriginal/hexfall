@@ -1,13 +1,13 @@
+import { at } from '../lib/assert';
 import { describe, expect, it } from 'vitest';
 import { Simulation } from './simulation';
 import { OrcLocomotion } from './orc-animation';
 import { ORC_ANIMATION } from '../config/rendering';
-
 describe('orc locomotion', () => {
   it('advances the same gait for the same travel at different frame rates', () => {
     const pose = (frames: number) => {
       const animation = new OrcLocomotion();
-      const enemy = new Simulation().enemies[0];
+      const enemy = at(new Simulation().enemies, 0);
       animation.update(0, enemy, 0);
       for (let frame = 1; frame <= frames; frame++) {
         enemy.z = frame / frames;
@@ -20,10 +20,9 @@ describe('orc locomotion', () => {
     );
     expect(pose(60)).toBeCloseTo(pose(30));
   });
-
   it('settles when stopped, freezes when paused, and resets reused slots', () => {
     const animation = new OrcLocomotion();
-    const enemy = new Simulation().enemies[0];
+    const enemy = at(new Simulation().enemies, 0);
     animation.update(0, enemy, 0);
     enemy.z = 0.3;
     animation.update(0, enemy, 0.3);

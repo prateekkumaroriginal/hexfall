@@ -1,9 +1,11 @@
+import { assign } from '../lib/assign';
+import { isInstancedMesh, isMesh } from './three-types';
+import { required, at } from '../lib/assert';
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { CreatureRenderer } from './creatures';
 import { Simulation } from './simulation';
 import { SLIME } from '../config/gameplay';
-
 describe('creature rendering', () => {
   it('shares slime batches across a full crowd', () => {
     const scene = new THREE.Scene();
@@ -13,12 +15,12 @@ describe('creature rendering', () => {
       object.name.startsWith('creature-'),
     ) as THREE.InstancedMesh[];
     expect(parts.length).toBeGreaterThan(0);
-    const triangles = parts.reduce((sum, part) => sum + part.geometry.index!.count / 3, 0);
+    const triangles = parts.reduce((sum, part) => sum + required(part.geometry.index).count / 3, 0);
     expect(triangles).toBeLessThanOrEqual(14000);
     const paintedMaterials = new Set(
       parts.map((part) => part.material as THREE.MeshStandardMaterial).filter((m) => m.map),
     );
-    const maps = new Set([...paintedMaterials].map((m) => m.map!));
+    const maps = new Set([...paintedMaterials].map((m) => required(m.map)));
     expect(maps.size).toBeGreaterThan(0);
     const slimeMaterial = scene.getObjectByName('creature-slime:gel') as THREE.InstancedMesh;
     const gel = slimeMaterial.material as THREE.MeshPhysicalMaterial;
@@ -39,14 +41,14 @@ describe('creature rendering', () => {
         ).toBe(true);
       }
     }
-    Object.assign(sim.enemies[0], { active: true, kind: 0, spawnRemaining: 0 });
-    Object.assign(sim.enemies[1], { active: true, kind: 1 });
+    assign(at(sim.enemies, 0), { active: true, id: 'slime', spawnRemaining: 0 });
+    assign(at(sim.enemies, 1), { active: true, id: 'orc' });
     renderer.update(sim.enemies, 0, 0, 9);
     const geometries = parts.map((p) => p.geometry);
     sim.enemies.forEach((enemy, i) =>
-      Object.assign(enemy, {
+      assign(enemy, {
         active: true,
-        kind: i % 2,
+        id: i % 2 ? 'orc' : 'slime',
         spawnRemaining: 0,
         x: i % 8,
         z: -Math.floor(i / 8) * 3,
@@ -57,7 +59,7 @@ describe('creature rendering', () => {
     parts.forEach((part, i) => {
       expect(part.geometry).toBe(geometries[i]);
       expect(part.count).toBe(
-        sim.enemies.filter((enemy) => enemy.active && enemy.kind === 0).length,
+        sim.enemies.filter((enemy) => enemy.active && enemy.id === 'slime').length,
       );
     });
     expect(
@@ -71,21 +73,20 @@ describe('creature rendering', () => {
     renderer.update(sim.enemies, 1, 0, 9, camera);
     expect(parts.every((part) => part.count === 0)).toBe(true);
     scene.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
+      if (isMesh(object)) {
         object.geometry.dispose();
         const materials = Array.isArray(object.material) ? object.material : [object.material];
         materials.forEach((material) => {
           if (paintedMaterials.has(material as THREE.MeshStandardMaterial)) return;
           material.dispose();
         });
-        if (object instanceof THREE.InstancedMesh) object.dispose();
+        if (isInstancedMesh(object)) object.dispose();
       }
     });
     paintedMaterials.forEach((material) => material.dispose());
     expect(released).toBe(maps.size);
   }, 30000);
 });
-
 describe('slime birth rendering', () => {
   it('keeps birth bubble pulses at their original speed throughout the longer birth', () => {
     const scene = new THREE.Scene(),
@@ -93,7 +94,7 @@ describe('slime birth rendering', () => {
       sim = new Simulation(() => 0.2);
     sim.remaining = 1;
     sim.spawn();
-    const e = sim.enemies[0],
+    const e = at(sim.enemies, 0),
       matrix = new THREE.Matrix4();
     const bubbles = scene.getObjectByName('slime-spawn-bubbles') as THREE.InstancedMesh;
     for (const elapsed of [0.56, 1.12, 1.68, 2.24]) {
@@ -114,22 +115,21 @@ describe('slime birth rendering', () => {
     renderer.update(sim.enemies, 2.5, 0, 9);
     expect(bubbles.count).toBe(0);
     scene.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
+      if (isMesh(object)) {
         object.geometry.dispose();
         const materials = Array.isArray(object.material) ? object.material : [object.material];
         for (const material of materials) material.dispose();
-        if (object instanceof THREE.InstancedMesh) object.dispose();
+        if (isInstancedMesh(object)) object.dispose();
       }
     });
   });
-
   it('spreads a low puddle, raises the body, and removes bubbles when formation ends', () => {
     const scene = new THREE.Scene(),
       renderer = new CreatureRenderer(scene),
       sim = new Simulation(() => 0.2);
     sim.remaining = 1;
     sim.spawn();
-    const e = sim.enemies[0],
+    const e = at(sim.enemies, 0),
       matrix = new THREE.Matrix4(),
       scale = new THREE.Vector3();
     const body = scene.getObjectByName('creature-slime:gel') as THREE.InstancedMesh;
@@ -158,11 +158,11 @@ describe('slime birth rendering', () => {
     expect(body.count).toBe(0);
     expect(bubbles.count).toBe(0);
     scene.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
+      if (isMesh(object)) {
         object.geometry.dispose();
         const materials = Array.isArray(object.material) ? object.material : [object.material];
         for (const material of materials) material.dispose();
-        if (object instanceof THREE.InstancedMesh) object.dispose();
+        if (isInstancedMesh(object)) object.dispose();
       }
     });
   });

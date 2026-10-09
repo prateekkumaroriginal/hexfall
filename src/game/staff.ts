@@ -1,7 +1,7 @@
+import { at, required } from '../lib/assert';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-
-export function buildStaff(group: THREE.Group): THREE.Mesh {
+export function buildStaff(group: THREE.Group) {
   const wood = new THREE.MeshStandardMaterial({ color: '#4d3020', roughness: 0.78, fog: false });
   const bronze = new THREE.MeshStandardMaterial({
     color: '#aa8245',
@@ -87,11 +87,7 @@ export function buildStaff(group: THREE.Group): THREE.Mesh {
       points.push(new THREE.Vector3(Math.cos(a) * r, 0.68 + t * 0.68, Math.sin(a) * r));
     }
     tube(points, 0.024, bronze, 24);
-    add(
-      new THREE.SphereGeometry(0.034, 10, 8),
-      bronze,
-      points[18].toArray() as [number, number, number],
-    );
+    add(new THREE.SphereGeometry(0.034, 10, 8), bronze, at(points, 18).toArray());
   }
   add(
     new THREE.TorusGeometry(0.21, 0.014, 8, 32),
@@ -164,7 +160,7 @@ export function buildStaff(group: THREE.Group): THREE.Mesh {
     ]);
   }
   for (const [material, geometries] of parts) {
-    const merged = mergeGeometries(geometries)!;
+    const merged = required(mergeGeometries(geometries));
     for (const g of geometries) g.dispose();
     group.add(new THREE.Mesh(merged, material));
   }

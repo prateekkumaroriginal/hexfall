@@ -1,14 +1,17 @@
+import { required } from '../lib/assert';
 import * as THREE from 'three';
 import { sculptedGeometry } from './creature-sculpt';
-
 export type CreatureBone = 'slime';
 export type CreatureSurface = 'ivory' | 'dark' | 'eye' | 'gel';
 type XYZ = [number, number, number];
-
+type GeometryGroup = {
+  bone: CreatureBone;
+  surface: CreatureSurface;
+  geometries: THREE.BufferGeometry[];
+};
 const gaussian = (value: number) => Math.exp(-value * value);
-
 export function buildCreatureGeometries() {
-  const groups = new Map<string, THREE.BufferGeometry[]>();
+  const groups = new Map<string, GeometryGroup>();
   const faceRay = new THREE.Raycaster();
   const add = (
     bone: CreatureBone,
@@ -52,8 +55,8 @@ export function buildCreatureGeometries() {
           gaussian((y - browY) / 0.052) *
           THREE.MathUtils.smoothstep(z, 0.58, 0.76);
         tint.lerp(shade, brow * 0.36);
-        if (geometry.userData.paintHighlight) tint.set('#dff0b5');
-      } else if (surface === 'ivory' && geometry.userData.horn) {
+        if (geometry.userData['paintHighlight']) tint.set('#dff0b5');
+      } else if (surface === 'ivory' && geometry.userData['horn']) {
         const uv = geometry.getAttribute('uv');
         const t = uv.getX(i),
           angle = uv.getY(i) * Math.PI * 2;
@@ -67,10 +70,10 @@ export function buildCreatureGeometries() {
     }
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.deleteAttribute('sculptShade');
-    const key = `${bone}:${surface}`,
-      parts = groups.get(key) ?? [];
-    parts.push(geometry);
-    groups.set(key, parts);
+    const key = `${bone}:${surface}`;
+    const group: GeometryGroup = groups.get(key) ?? { bone, surface, geometries: [] };
+    group.geometries.push(geometry);
+    groups.set(key, group);
     // Keep the authoring normal attribute used above explicit for geometry validation.
     if (n.count !== p.count) throw new Error('Slime normal buffer does not match positions');
   };
@@ -97,7 +100,7 @@ export function buildCreatureGeometries() {
   ) => {
     const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)));
     const geometry = new THREE.TubeGeometry(curve, segments, radius, sides, false);
-    geometry.userData.horn = surface === 'ivory';
+    geometry.userData['horn'] = surface === 'ivory';
     const p = geometry.getAttribute('position');
     for (let row = 0; row <= segments; row++) {
       const t = row / segments,
@@ -116,7 +119,7 @@ export function buildCreatureGeometries() {
     if (surface === 'ivory' || surface === 'dark') {
       const positions = Array.from(p.array),
         uv = Array.from(geometry.getAttribute('uv').array),
-        indices = Array.from(geometry.index!.array);
+        indices = Array.from(required(geometry.index).array);
       for (const end of [0, 1]) {
         const center = curve.getPointAt(end),
           target = curve.getTangentAt(end).multiplyScalar(end ? 1 : -1);
@@ -179,7 +182,7 @@ export function buildCreatureGeometries() {
   );
   glint.setIndex(glintIndices);
   glint.computeVertexNormals();
-  glint.userData.paintHighlight = true;
+  glint.userData['paintHighlight'] = true;
   add('slime', 'gel', glint, '#dff0b5');
   gelFitMaterial.dispose();
   for (const side of [-1, 1]) {
@@ -241,8 +244,8 @@ export function buildCreatureGeometries() {
       5,
       5,
     );
-  for (const [key, geometries] of groups) {
-    if (key.startsWith('slime:')) for (const geometry of geometries) geometry.scale(0.851, 1, 1);
+  for (const { bone, geometries } of groups.values()) {
+    if (bone === 'slime') for (const geometry of geometries) geometry.scale(0.851, 1, 1);
   }
-  return groups;
+  return [...groups.values()];
 }

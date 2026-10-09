@@ -1,15 +1,14 @@
+import { at, required } from '../lib/assert';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TREE_LAYOUT } from './world';
 import { TREES } from '../config/world';
-
 function randomSource(seed: number) {
   return () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
     return (seed >>> 0) / 4294967296;
   };
 }
-
 // Blend overlapping foliage volumes into a single sculpted crown. There are no leaf cards.
 function sculptCanopy(seed: number, spread: number) {
   const random = randomSource(seed);
@@ -62,7 +61,10 @@ function sculptCanopy(seed: number, spread: number) {
   const nx = Math.ceil((9 * spread) / step),
     ny = Math.ceil((8.2 - min.y) / step),
     nz = nx;
-  const samples: { p: THREE.Vector3; d: number }[] = [];
+  const samples: {
+    p: THREE.Vector3;
+    d: number;
+  }[] = [];
   const id = (x: number, y: number, z: number) => (z * (ny + 1) + y) * (nx + 1) + x;
   for (let z = 0; z <= nz; z++)
     for (let y = 0; y <= ny; y++)
@@ -83,8 +85,8 @@ function sculptCanopy(seed: number, spread: number) {
     const key = a < b ? `${a}:${b}` : `${b}:${a}`;
     const cached = edgeVertices.get(key);
     if (cached !== undefined) return cached;
-    const sa = samples[a],
-      sb = samples[b];
+    const sa = at(samples, a),
+      sb = at(samples, b);
     const p = sa.p.clone().lerp(sb.p, sa.d / (sa.d - sb.d));
     const n = gradient(p);
     const t = THREE.MathUtils.clamp((p.y - 3.8) / 3.65, 0, 1);
@@ -107,8 +109,15 @@ function sculptCanopy(seed: number, spread: number) {
     return index;
   };
   const triangle = (a: number, b: number, c: number) => {
-    const normal = points[b].clone().sub(points[a]).cross(points[c].clone().sub(points[a]));
-    const expected = new THREE.Vector3(normals[a * 3], normals[a * 3 + 1], normals[a * 3 + 2]);
+    const normal = at(points, b)
+      .clone()
+      .sub(at(points, a))
+      .cross(at(points, c).clone().sub(at(points, a)));
+    const expected = new THREE.Vector3(
+      at(normals, a * 3),
+      at(normals, a * 3 + 1),
+      at(normals, a * 3 + 2),
+    );
     if (normal.dot(expected) < 0) indices.push(a, c, b);
     else indices.push(a, b, c);
   };
@@ -119,7 +128,7 @@ function sculptCanopy(seed: number, spread: number) {
     [0, 3, 7, 6],
     [0, 7, 4, 6],
     [0, 4, 5, 6],
-  ];
+  ] as const;
   for (let z = 0; z < nz; z++)
     for (let y = 0; y < ny; y++)
       for (let x = 0; x < nx; x++) {
@@ -133,21 +142,30 @@ function sculptCanopy(seed: number, spread: number) {
           id(x + 1, y + 1, z + 1),
           id(x, y + 1, z + 1),
         ];
-        if (corners.every((i) => samples[i].d >= 0) || corners.every((i) => samples[i].d < 0))
+        if (
+          corners.every((i) => at(samples, i).d >= 0) ||
+          corners.every((i) => at(samples, i).d < 0)
+        )
           continue;
         for (const tetra of tetrahedra) {
-          const inside = tetra.map((i) => corners[i]).filter((i) => samples[i].d < 0);
-          const outside = tetra.map((i) => corners[i]).filter((i) => samples[i].d >= 0);
+          const inside = tetra.map((i) => at(corners, i)).filter((i) => at(samples, i).d < 0);
+          const outside = tetra.map((i) => at(corners, i)).filter((i) => at(samples, i).d >= 0);
           if (!inside.length || !outside.length) continue;
-          if (inside.length === 1)
-            triangle(...(outside.map((i) => vertex(inside[0], i)) as [number, number, number]));
-          else if (outside.length === 1)
-            triangle(...(inside.map((i) => vertex(outside[0], i)) as [number, number, number]));
-          else {
-            const a = vertex(inside[0], outside[0]),
-              b = vertex(inside[0], outside[1]);
-            const c = vertex(inside[1], outside[0]),
-              d = vertex(inside[1], outside[1]);
+          if (inside.length === 1) {
+            const a = at(inside, 0);
+            triangle(
+              vertex(a, at(outside, 0)),
+              vertex(a, at(outside, 1)),
+              vertex(a, at(outside, 2)),
+            );
+          } else if (outside.length === 1) {
+            const a = at(outside, 0);
+            triangle(vertex(at(inside, 0), a), vertex(at(inside, 1), a), vertex(at(inside, 2), a));
+          } else {
+            const a = vertex(at(inside, 0), at(outside, 0)),
+              b = vertex(at(inside, 0), at(outside, 1));
+            const c = vertex(at(inside, 1), at(outside, 0)),
+              d = vertex(at(inside, 1), at(outside, 1));
             triangle(a, b, c);
             triangle(b, d, c);
           }
@@ -161,7 +179,6 @@ function sculptCanopy(seed: number, spread: number) {
   geometry.computeBoundingSphere();
   return geometry;
 }
-
 function buildTree(seed: number, spread: number) {
   const random = randomSource(seed);
   const wood: THREE.BufferGeometry[] = [];
@@ -260,7 +277,7 @@ function buildTree(seed: number, spread: number) {
   for (const [y, angle] of [
     [1.4, 0.7],
     [2.05, 3.9],
-  ]) {
+  ] as const) {
     const center = trunkCurve.getPoint(y / 4.8);
     const radius = THREE.MathUtils.lerp(0.58, 0.12, y / 4.8);
     const knot = new THREE.TorusGeometry(0.075, 0.016, 5, 14);
@@ -298,16 +315,18 @@ function buildTree(seed: number, spread: number) {
     const end = new THREE.Vector3(Math.cos(a) * reach, y + 2.15, Math.sin(a) * reach);
     branch([new THREE.Vector3(0, y - 0.4, 0), fork, end], 0.24 - i * 0.018, 0.07, 7);
   }
-  const trunk = mergeGeometries(wood)!;
+  const trunk = required(mergeGeometries(wood));
   const canopy = sculptCanopy(seed + 31, spread);
   for (const g of wood) g.dispose();
   trunk.computeBoundingSphere();
   canopy.computeBoundingSphere();
   return { trunk, canopy };
 }
-
 export class TreeRenderer {
-  private batches: { trunk: THREE.InstancedMesh; canopy: THREE.InstancedMesh }[] = [];
+  private batches: {
+    trunk: THREE.InstancedMesh;
+    canopy: THREE.InstancedMesh;
+  }[] = [];
   private trees: {
     matrix: THREE.Matrix4;
     tint: THREE.Color;
@@ -315,12 +334,11 @@ export class TreeRenderer {
     variant: number;
   }[] = [];
   private wind = { value: 0 };
-
   constructor(scene: THREE.Scene) {
     const bark = new THREE.MeshStandardMaterial({ roughness: 1, vertexColors: true });
     const foliage = new THREE.MeshStandardMaterial({ roughness: 1, vertexColors: true });
     foliage.onBeforeCompile = (shader) => {
-      shader.uniforms.treeTime = this.wind;
+      shader.uniforms['treeTime'] = this.wind;
       shader.vertexShader = 'uniform float treeTime;\n' + shader.vertexShader;
       shader.vertexShader = shader.vertexShader.replace(
         '#include <begin_vertex>',
@@ -363,7 +381,7 @@ export class TreeRenderer {
       dummy.rotation.set(0, tree.yaw, 0);
       dummy.scale.set(tree.scaleX, tree.scaleY, tree.scaleZ);
       dummy.updateMatrix();
-      const bounds = this.batches[variant].canopy.geometry.boundingSphere!.clone();
+      const bounds = required(at(this.batches, variant).canopy.geometry.boundingSphere).clone();
       bounds.applyMatrix4(dummy.matrix);
       bounds.radius += 0.12;
       // Include the roots and lower trunk in the same conservative culling volume.
@@ -376,13 +394,12 @@ export class TreeRenderer {
       });
     }
   }
-
   update(time: number, frustum: THREE.Frustum) {
     this.wind.value = time;
     for (const { trunk, canopy } of this.batches) trunk.count = canopy.count = 0;
     for (const tree of this.trees) {
       if (!frustum.intersectsSphere(tree.bounds)) continue;
-      const { trunk, canopy } = this.batches[tree.variant];
+      const { trunk, canopy } = at(this.batches, tree.variant);
       trunk.setMatrixAt(trunk.count++, tree.matrix);
       canopy.setMatrixAt(canopy.count, tree.matrix);
       canopy.setColorAt(canopy.count++, tree.tint);

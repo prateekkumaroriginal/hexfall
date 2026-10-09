@@ -1,9 +1,8 @@
+import { required, at } from '../lib/assert';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH } from '../config/world';
-
 type RidgeProfile = readonly (readonly [outward: number, height: number])[];
-
 const CLIFF_PROFILE: RidgeProfile = [
   [0.08, -0.14],
   [0.8, 0.65],
@@ -29,12 +28,10 @@ const SUMMIT_PROFILE: RidgeProfile = [
   [57, 9],
   [65, -0.2],
 ];
-
 function peak(phase: number, center: number, width: number) {
   const distance = Math.min(Math.abs(phase - center), 1 - Math.abs(phase - center));
   return Math.pow(Math.max(0, 1 - distance / width), 0.85);
 }
-
 function buildRidge(profile: RidgeProfile, segments: number, distant: boolean) {
   const vertices: THREE.Vector3[] = [];
   const positions: number[] = [],
@@ -70,7 +67,7 @@ function buildRidge(profile: RidgeProfile, segments: number, distant: boolean) {
               ? ARENA_HALF_DEPTH
               : ARENA_HALF_DEPTH - u * ARENA_HALF_DEPTH * 2;
       const angle = phase * Math.PI * 2;
-      const [baseOutward, baseHeight] = profile[row];
+      const [baseOutward, baseHeight] = at(profile, row);
       const interior = row > 0 && row < profile.length - 1;
       const flutes =
         Math.sin(angle * 19 + row * 0.08) * 0.8 + Math.sin(angle * 31 - row * 0.06) * 0.35;
@@ -180,7 +177,6 @@ function buildRidge(profile: RidgeProfile, segments: number, distant: boolean) {
   }
   return sculpted;
 }
-
 function buildOutcrops() {
   const parts: THREE.BufferGeometry[] = [];
   for (let i = 0; i < 20; i++) {
@@ -215,16 +211,15 @@ function buildOutcrops() {
     geometry.computeVertexNormals();
     parts.push(geometry);
   }
-  const geometry = mergeGeometries(parts)!;
+  const geometry = required(mergeGeometries(parts));
   for (const part of parts) part.dispose();
   return geometry;
 }
-
 export function buildMountains(scene: THREE.Scene) {
   const cliffs = buildRidge(CLIFF_PROFILE, 192, false);
   const summits = buildRidge(SUMMIT_PROFILE, 160, true);
   const outcrops = buildOutcrops();
-  const geometry = mergeGeometries([cliffs, summits, outcrops])!;
+  const geometry = required(mergeGeometries([cliffs, summits, outcrops]));
   cliffs.dispose();
   summits.dispose();
   outcrops.dispose();

@@ -1,3 +1,5 @@
+import { assign } from '../lib/assign';
+import { isInstancedMesh, isMesh, isPoints } from './three-types';
 import * as THREE from 'three';
 import { blankInput, Simulation } from './simulation';
 import { PLAYER, STAFF } from '../config/gameplay';
@@ -41,7 +43,7 @@ export class Engine {
   private creatures: CreatureRenderer;
   private staff = new THREE.Group();
   private staffView = new THREE.Group();
-  private crystal: THREE.Mesh;
+  private crystal: ReturnType<typeof buildStaff>;
   private mouseFire = false;
   private audio?: AudioContext;
   private lastShot = 0;
@@ -104,7 +106,7 @@ export class Engine {
     this.projectiles.name = 'wizard-projectiles';
     this.trails.name = 'spell-trails';
     this.creatures = new CreatureRenderer(this.scene);
-    void this.creatures.loadOrc().catch((error) => {
+    void this.creatures.loadOrc().catch((error: unknown) => {
       if (this.disposed) return;
       console.error('orc could not load.', error);
       this.pause();
@@ -179,9 +181,9 @@ export class Engine {
       {
         reportVersion: 1,
         browser: navigator.userAgent,
-        graphics: debug
-          ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)
-          : gl.getParameter(gl.RENDERER),
+        graphics: String(
+          debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+        ),
         quality: this.settings.quality,
         renderScale: this.settings.renderScale,
         devicePixelRatio,
@@ -241,7 +243,7 @@ export class Engine {
     this.sim.phase = 'ready';
     this.keys.clear();
     this.mouseFire = false;
-    Object.assign(this.input, blankInput());
+    assign(this.input, blankInput());
     this.accumulator = 0;
     if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock();
     this.onUpdate(this.sim.snapshot());
@@ -380,7 +382,7 @@ export class Engine {
       Math.sin(this.sim.time * 3) * 0.015 +
       (this.input.fire && this.sim.shootCooldown > 0.08 ? -0.035 : 0);
     this.crystal.rotation.y += dt;
-    (this.crystal.material as THREE.MeshStandardMaterial).emissiveIntensity =
+    this.crystal.material.emissiveIntensity =
       this.input.fire && this.sim.phase === 'playing' && this.sim.shootCooldown > 0.07 ? 2.4 : 0.6;
     this.environment.update(
       this.sim.phase === 'ready' ? this.previewTime : this.sim.time,
@@ -444,11 +446,11 @@ export class Engine {
     const geometries = new Set<THREE.BufferGeometry>(),
       materials = new Set<THREE.Material>();
     this.scene.traverse((object) => {
-      if (object instanceof THREE.Mesh || object instanceof THREE.Points) {
+      if (isMesh(object) || isPoints(object)) {
         geometries.add(object.geometry);
         const ms = Array.isArray(object.material) ? object.material : [object.material];
         for (const m of ms) materials.add(m);
-        if (object instanceof THREE.InstancedMesh) object.dispose();
+        if (isInstancedMesh(object)) object.dispose();
       }
     });
     for (const g of geometries) g.dispose();

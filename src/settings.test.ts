@@ -38,8 +38,22 @@ describe('saved settings', () => {
     });
   });
 
-  it.each(['{', 'null', '[]', '{}'])('falls back to defaults for an invalid record %s', (value) => {
-    expect(parseSettings(value)).toEqual(defaultSettings);
+  it.each(['', '{', 'null', '[]', '{}', '42', '"settings"'])(
+    'falls back to defaults for an invalid record %s',
+    (value) => {
+      expect(parseSettings(value)).toEqual(defaultSettings);
+    },
+  );
+
+  it.each([
+    { ...defaultSettings, quality: 'ultra' },
+    { ...defaultSettings, sensitivity: '1' },
+    { ...defaultSettings, sensitivity: 0.1 },
+    { ...defaultSettings, sensitivity: 3 },
+    { ...defaultSettings, sound: 'yes' },
+    { quality: 'balanced', sensitivity: 1 },
+  ])('defaults invalid required saved fields %j', (saved) => {
+    expect(parseSettings(JSON.stringify(saved))).toEqual(defaultSettings);
   });
 
   it.each([75, 90, 110])('restores field of view %s', (fieldOfView) => {

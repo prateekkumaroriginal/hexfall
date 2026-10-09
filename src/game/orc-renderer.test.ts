@@ -1,16 +1,37 @@
+import { assign } from '../lib/assign';
+import { isSkinnedMesh, isGroup } from './three-types';
+import { at, required } from '../lib/assert';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CreatureRenderer } from './creatures';
 import { Simulation } from './simulation';
 import { MAX_ENEMIES } from '../config/runtime';
 import { loadOrcAsset, OrcRenderer } from './orc-renderer';
+import { validateOrcAsset, validateOrcRig } from './orc-rig';
+import type { OrcRig } from './orc-rig';
 import { ORC_ANIMATION } from '../config/rendering';
-
 const file = readFileSync(new URL('../../public/models/orc-rigged.glb', import.meta.url));
 const jsonLength = file.readUInt32LE(12);
-const gltf = JSON.parse(file.toString('utf8', 20, 20 + jsonLength));
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function record(value: unknown) {
+  if (!isRecord(value)) throw new Error('Invalid GLB metadata object');
+  return value;
+}
+function array(value: unknown): unknown[] {
+  if (!Array.isArray(value)) throw new Error('Invalid GLB metadata array');
+  return value;
+}
+function number(value: unknown) {
+  if (typeof value !== 'number') throw new Error('Invalid GLB metadata number');
+  return value;
+}
+const parsedMetadata: unknown = JSON.parse(file.toString('utf8', 20, 20 + jsonLength));
+const gltf = record(parsedMetadata);
 // Parse the actual rig/clips in Node; image decoding is covered by browser rendering.
 const noImages = { ...gltf, images: [], textures: [], materials: [{ pbrMetallicRoughness: {} }] };
 const json = Buffer.from(JSON.stringify(noImages));
@@ -24,7 +45,7 @@ header.writeUInt32LE(padded.length, 12);
 header.writeUInt32LE(0x4e4f534a, 16);
 const bytes = Buffer.concat([header, padded, bin]);
 const assetPromise = new GLTFLoader().parseAsync(
-  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   '',
 );
 afterEach(() => {
@@ -32,8 +53,72 @@ afterEach(() => {
   vi.doUnmock('../config/gameplay');
   vi.resetModules();
 });
-
 describe('rigged orc', () => {
+  it.each([
+    {
+      name: 'head bone',
+      change: (rig: OrcRig) => {
+        rig.head.name = 'renamed-head';
+      },
+      message: 'Missing orc head bone',
+    },
+    {
+      name: 'free-arm bone',
+      change: (rig: OrcRig) => {
+        rig.freeArm[0].bone.name = 'renamed-arm';
+      },
+      message: 'Missing orc leftUpperArm bone',
+    },
+    {
+      name: 'head inverse',
+      change: (rig: OrcRig) => {
+        rig.face.skeleton.boneInverses.length = 0;
+      },
+      message: 'Missing orc head inverse',
+    },
+    {
+      name: 'eye coordinates',
+      change: (rig: OrcRig) => {
+        rig.face.userData['orc_eye_centers'] = ['x', 0, 0, 0, 0, 0];
+      },
+      message: 'Invalid orc eye landmarks',
+    },
+    {
+      name: 'non-finite eye coordinates',
+      change: (rig: OrcRig) => {
+        rig.face.userData['orc_eye_centers'] = [NaN, 0, 0, 0, 0, 0];
+      },
+      message: 'Invalid orc eye landmarks',
+    },
+    {
+      name: 'pose index',
+      change: (rig: OrcRig) => {
+        required(rig.face.morphTargetDictionary)['Blink'] = rig.influences.length;
+      },
+      message: 'Invalid orc Blink pose',
+    },
+  ])('rejects invalid $name before a rig can render', async ({ change, message }) => {
+    const asset = await assetPromise;
+    const root = clone(asset.scene);
+    if (!isGroup(root)) throw new Error('Invalid orc root');
+    change(validateOrcRig(root));
+    vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ ...asset, scene: root });
+    await expect(loadOrcAsset()).rejects.toThrow(message);
+  });
+  it('requires all expressions on the same face', async () => {
+    const asset = await assetPromise;
+    const root = clone(asset.scene);
+    if (!isGroup(root)) throw new Error('Invalid orc root');
+    const { face } = validateOrcRig(root);
+    const second = face.clone();
+    second.morphTargetDictionary = { BrowTense: 0 };
+    face.morphTargetDictionary = { Blink: 0, JawOpen: 1 };
+    root.add(second);
+    vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ ...asset, scene: root });
+    await expect(loadOrcAsset()).rejects.toThrow(
+      'Missing orc face with Blink, JawOpen and BrowTense poses',
+    );
+  });
   it.each([
     { windup: 1.1, recovery: 0.9, cooldown: 2.5 },
     { windup: 0.275, recovery: 0.225, cooldown: 0.625 },
@@ -53,15 +138,18 @@ describe('rigged orc', () => {
     });
     const { OrcRenderer: ConfiguredRenderer } = await import('./orc-renderer');
     const { Simulation: ConfiguredSimulation, blankInput } = await import('./simulation');
-    const renderer = new ConfiguredRenderer(new THREE.Scene(), await assetPromise);
+    const renderer = new ConfiguredRenderer(
+      new THREE.Scene(),
+      validateOrcAsset(await assetPromise),
+    );
     const sim = new ConfiguredSimulation();
     sim.reset();
     sim.remaining = 1;
     sim.spawnCooldown = 100;
-    const enemy = sim.enemies[0];
-    Object.assign(enemy, {
+    const enemy = at(sim.enemies, 0);
+    assign(enemy, {
       active: true,
-      kind: 1,
+      id: 'orc',
       x: sim.x,
       z: sim.z - 1.5,
       windup: timing.windup,
@@ -70,9 +158,11 @@ describe('rigged orc', () => {
     const actions = vi.spyOn(THREE.AnimationMixer.prototype, 'clipAction');
     try {
       renderer.update(0, enemy, 0, 0, 0);
-      const punch = actions.mock.results
-        .map((result) => result.value as THREE.AnimationAction)
-        .find((action) => action.getClip().name === 'Punch')!;
+      const punch = required(
+        actions.mock.results
+          .map((result) => result.value as THREE.AnimationAction)
+          .find((action) => action.getClip().name === 'Punch'),
+      );
       expect(punch.time).toBe(0);
       sim.step(timing.windup / 2, blankInput());
       renderer.update(0, enemy, 0, 0, 0);
@@ -97,24 +187,27 @@ describe('rigged orc', () => {
   });
   it('ships weighted bones and baked idle, walk, and punch clips with the PBR maps', () => {
     expect(file.readUInt32LE(8)).toBe(file.length);
-    expect(gltf.animations.map((a: { name: string }) => a.name)).toEqual(
+    expect(array(gltf['animations']).map((animation) => record(animation)['name'])).toEqual(
       expect.arrayContaining(['Idle', 'Punch', 'Walk']),
     );
-    const primitive = gltf.meshes[0].primitives[0];
-    expect(primitive.attributes).toHaveProperty('JOINTS_0');
-    expect(primitive.attributes).toHaveProperty('WEIGHTS_0');
-    expect(gltf.accessors[primitive.indices].count / 3).toBeLessThanOrEqual(120000);
-    expect(gltf.materials[0].pbrMetallicRoughness).toHaveProperty('baseColorTexture');
-    expect(gltf.materials[0].pbrMetallicRoughness).toHaveProperty('metallicRoughnessTexture');
-    expect(gltf.materials[0]).toHaveProperty('normalTexture');
-    expect(gltf.meshes[0].extras.targetNames).toEqual(
+    const mesh = record(at(array(gltf['meshes']), 0));
+    const primitive = record(at(array(mesh['primitives']), 0));
+    expect(primitive['attributes']).toHaveProperty('JOINTS_0');
+    expect(primitive['attributes']).toHaveProperty('WEIGHTS_0');
+    const accessor = record(at(array(gltf['accessors']), number(primitive['indices'])));
+    expect(number(accessor['count']) / 3).toBeLessThanOrEqual(120000);
+    const material = record(at(array(gltf['materials']), 0));
+    expect(material['pbrMetallicRoughness']).toHaveProperty('baseColorTexture');
+    expect(material['pbrMetallicRoughness']).toHaveProperty('metallicRoughnessTexture');
+    expect(material).toHaveProperty('normalTexture');
+    expect(record(mesh['extras'])['targetNames']).toEqual(
       expect.arrayContaining(['Blink', 'JawOpen', 'BrowTense']),
     );
   });
   it('plants the stance foot in world space, lifts the swing foot, and keeps limb lengths fixed', async () => {
     const scene = new THREE.Scene(),
-      renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+      renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     let planted: THREE.Vector3 | undefined;
     let lengths: number[] | undefined;
     for (const phase of [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1]) {
@@ -122,28 +215,28 @@ describe('rigged orc', () => {
       renderer.update(0, enemy, 0, phase * Math.PI * 2, 1);
       const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
       const position = (name: string) =>
-        mesh.skeleton.bones
-          .find((bone) => bone.name === name)!
-          .getWorldPosition(new THREE.Vector3());
+        required(mesh.skeleton.bones.find((bone) => bone.name === name)).getWorldPosition(
+          new THREE.Vector3(),
+        );
       const ankle = position('leftFoot');
       const measures = [
         position('leftThigh').distanceTo(position('leftShin')),
         position('leftShin').distanceTo(ankle),
       ];
       if (!lengths) lengths = measures;
-      measures.forEach((length, i) => expect(length).toBeCloseTo(lengths![i], 5));
+      measures.forEach((length, i) => expect(length).toBeCloseTo(at(required(lengths), i), 5));
       // The ankle is fixed during flat support; heel/toe roll moves it around the contact.
       if (phase >= 0.125 && phase <= 0.375) {
         planted ??= ankle.clone();
         expect(ankle.distanceTo(planted)).toBeLessThan(0.00001);
-      } else if (phase === 0.75) expect(ankle.y).toBeGreaterThan(planted!.y + 0.15);
+      } else if (phase === 0.75) expect(ankle.y).toBeGreaterThan(required(planted).y + 0.15);
     }
     renderer.dispose();
   });
   it('rolls from heel contact to toe push-off with a full stride and moving hips/shoulders', async () => {
     const scene = new THREE.Scene(),
-      renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+      renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     const samples: {
       ankle: THREE.Vector3;
       toe: THREE.Vector3;
@@ -154,11 +247,12 @@ describe('rigged orc', () => {
     for (const phase of [0, 0.25, 0.58, 0.75, 1]) {
       renderer.update(0, enemy, 0, phase * Math.PI * 2, 1);
       const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
-      const bone = (name: string) => mesh.skeleton.bones.find((bone) => bone.name === name)!;
+      const bone = (name: string) =>
+        required(mesh.skeleton.bones.find((bone) => bone.name === name));
       const footIndex = mesh.skeleton.bones.findIndex((bone) => bone.name === 'leftFoot');
       const skin = new THREE.Matrix4().multiplyMatrices(
         bone('leftFoot').matrixWorld,
-        mesh.skeleton.boneInverses[footIndex],
+        at(mesh.skeleton.boneInverses, footIndex),
       );
       const origin = new THREE.Vector3(-0.48, 0.18, 0.12).applyMatrix4(skin);
       const toe = new THREE.Vector3(-0.48, 0.18, 1.12).applyMatrix4(skin).sub(origin).normalize();
@@ -170,20 +264,20 @@ describe('rigged orc', () => {
         head: bone('head').getWorldQuaternion(new THREE.Quaternion()),
       });
     }
-    expect(samples[0].toe.y).toBeGreaterThan(0.2);
-    expect(Math.abs(samples[1].toe.y)).toBeLessThan(0.00001);
-    expect(samples[2].toe.y).toBeLessThan(-0.4);
-    expect(samples[0].ankle.z - samples[2].ankle.z).toBeGreaterThan(0.6);
-    expect(samples[1].pelvis.distanceTo(samples[0].pelvis)).toBeGreaterThan(0.04);
-    expect(samples[1].shoulder.distanceTo(samples[0].shoulder)).toBeGreaterThan(0.05);
-    expect(samples[1].head.angleTo(samples[0].head)).toBeLessThan(0.00001);
-    expect(samples[4].ankle.distanceTo(samples[0].ankle)).toBeLessThan(0.00001);
+    expect(at(samples, 0).toe.y).toBeGreaterThan(0.2);
+    expect(Math.abs(at(samples, 1).toe.y)).toBeLessThan(0.00001);
+    expect(at(samples, 2).toe.y).toBeLessThan(-0.4);
+    expect(at(samples, 0).ankle.z - at(samples, 2).ankle.z).toBeGreaterThan(0.6);
+    expect(at(samples, 1).pelvis.distanceTo(at(samples, 0).pelvis)).toBeGreaterThan(0.04);
+    expect(at(samples, 1).shoulder.distanceTo(at(samples, 0).shoulder)).toBeGreaterThan(0.05);
+    expect(at(samples, 1).head.angleTo(at(samples, 0).head)).toBeLessThan(0.00001);
+    expect(at(samples, 4).ankle.distanceTo(at(samples, 0).ankle)).toBeLessThan(0.00001);
     renderer.dispose();
   });
   it('plants the heel and toe contacts while the foot rolls over them', async () => {
     const scene = new THREE.Scene(),
-      renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+      renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     for (const [phases, pivot] of [
       [[0, 2 / 48, 4 / 48], new THREE.Vector3(-0.48, 0, -0.01)],
       [[22 / 48, 24 / 48, 26 / 48, 28 / 48], new THREE.Vector3(-0.48, 0, 0.48)],
@@ -195,8 +289,8 @@ describe('rigged orc', () => {
         const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
         const index = mesh.skeleton.bones.findIndex((bone) => bone.name === 'leftFoot');
         const skin = new THREE.Matrix4().multiplyMatrices(
-          mesh.skeleton.bones[index].matrixWorld,
-          mesh.skeleton.boneInverses[index],
+          at(mesh.skeleton.bones, index).matrixWorld,
+          at(mesh.skeleton.boneInverses, index),
         );
         const contact = pivot.clone().applyMatrix4(skin);
         planted ??= contact.clone();
@@ -215,12 +309,12 @@ describe('rigged orc', () => {
     const slime = scene.getObjectByName('creature-slime:gel');
     await creatures.loadOrc();
     sim.enemies.forEach((e, i) =>
-      Object.assign(e, { active: true, kind: 1, x: i % 8, z: -Math.floor(i / 8) * 3 }),
+      assign(e, { active: true, id: 'orc', x: i % 8, z: -Math.floor(i / 8) * 3 }),
     );
     creatures.update(sim.enemies, 0, 0, 9);
     const meshes: THREE.SkinnedMesh[] = [];
     scene.traverse((object) => {
-      if (object instanceof THREE.SkinnedMesh) meshes.push(object);
+      if (isSkinnedMesh(object)) meshes.push(object);
     });
     expect(meshes).toHaveLength(MAX_ENEMIES);
     expect(new Set(meshes.map((mesh) => mesh.geometry)).size).toBe(1);
@@ -233,15 +327,15 @@ describe('rigged orc', () => {
     expect(scene.children.filter((o) => o.name.startsWith('orc-')).every((o) => !o.visible)).toBe(
       true,
     );
-    const dispose = vi.spyOn(meshes[0].geometry, 'dispose');
+    const dispose = vi.spyOn(at(meshes, 0).geometry, 'dispose');
     creatures.dispose();
     expect(dispose).toHaveBeenCalledOnce();
     expect(scene.children.some((o) => o.name.startsWith('orc-'))).toBe(false);
   });
   it('keeps the corrected face upright while both eyes track the player at every bearing', async () => {
     const scene = new THREE.Scene(),
-      renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+      renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     for (const angle of [0, Math.PI / 2, -Math.PI / 3]) {
       for (let frame = 0; frame < 60; frame++) {
         const phase = frame < 30 ? 0 : 1.5;
@@ -251,21 +345,22 @@ describe('rigged orc', () => {
         const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
         const index = mesh.skeleton.bones.findIndex((bone) => bone.name === 'head');
         const transform = new THREE.Matrix4().multiplyMatrices(
-          mesh.skeleton.bones[index].matrixWorld,
-          mesh.skeleton.boneInverses[index],
+          at(mesh.skeleton.bones, index).matrixWorld,
+          at(mesh.skeleton.boneInverses, index),
         );
         const facing = new THREE.Vector3(0, 0, 1).transformDirection(transform);
         expect(
           facing.distanceTo(new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle))),
         ).toBeLessThan(0.00001);
         expect(new THREE.Vector3(0, 1, 0).transformDirection(transform).y).toBeCloseTo(1, 6);
-        const centers = mesh.userData.orc_eye_centers;
+        const root = required(scene.getObjectByName('orc-0'));
+        if (!isGroup(root)) throw new Error('Invalid orc root');
+        const centers = validateOrcRig(root).eyeCenters;
         expect(centers[1]).toBeCloseTo(centers[4], 6);
         expect(centers[2]).toBeCloseTo(centers[5], 6);
-        const root = scene.getObjectByName('orc-0')!;
         const target = root.localToWorld(new THREE.Vector3(0, 1.6, distance));
         for (const eyeIndex of [0, 1]) {
-          const eye = scene.getObjectByName(`orc-eye-0-${eyeIndex}`)!;
+          const eye = required(scene.getObjectByName(`orc-eye-0-${eyeIndex}`));
           const direction = new THREE.Vector3(0, 0, 1).transformDirection(eye.matrixWorld);
           const aim = target.clone().sub(eye.getWorldPosition(new THREE.Vector3())).normalize();
           expect(direction.distanceTo(aim)).toBeLessThan(0.00001);
@@ -276,25 +371,27 @@ describe('rigged orc', () => {
   });
   it('blinks and breathes independently per orc, freezes when paused, and closes its mouth during attacks', async () => {
     const scene = new THREE.Scene(),
-      renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+      renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     const mesh = (slot: number) =>
       scene.getObjectByName(`creature-orc-${slot}`) as THREE.SkinnedMesh;
     const value = (slot: number, name: string) =>
-      mesh(slot).morphTargetInfluences![mesh(slot).morphTargetDictionary![name]];
+      required(mesh(slot).morphTargetInfluences)[
+        required(required(mesh(slot).morphTargetDictionary)[name])
+      ];
     renderer.update(0, enemy, 0, 0, 0, 2, 0);
     expect(value(0, 'Blink')).toBe(0);
     const restingJaw = value(0, 'JawOpen');
     renderer.update(0, enemy, 0, 0, 0, 2, 1.9);
     expect(value(0, 'Blink')).toBeCloseTo(1);
-    expect(scene.getObjectByName('creature-orc-eye-0-0')!.visible).toBe(false);
+    expect(required(scene.getObjectByName('creature-orc-eye-0-0')).visible).toBe(false);
     expect(value(0, 'JawOpen')).not.toBe(restingJaw);
     renderer.update(1, enemy, 0, 0, 0, 2, 1.9);
     expect(value(1, 'Blink')).toBe(0);
-    expect(scene.getObjectByName('creature-orc-eye-1-0')!.visible).toBe(true);
+    expect(required(scene.getObjectByName('creature-orc-eye-1-0')).visible).toBe(true);
     expect(value(0, 'Blink')).toBeCloseTo(1);
     expect(mesh(0).morphTargetInfluences).not.toBe(mesh(1).morphTargetInfluences);
-    const frozen = [...mesh(0).morphTargetInfluences!];
+    const frozen = [...required(mesh(0).morphTargetInfluences)];
     renderer.update(0, enemy, 0, 0, 0, 2, 1.9);
     expect(mesh(0).morphTargetInfluences).toEqual(frozen);
     enemy.windup = 0.1;
@@ -310,7 +407,7 @@ describe('rigged orc', () => {
     expect(value(0, 'JawOpen')).toBe(0);
     const geometry = mesh(0).geometry;
     const positions = geometry.getAttribute('position');
-    for (const target of geometry.morphAttributes.position!) {
+    for (const target of required(geometry.morphAttributes.position)) {
       let moving = 0;
       let bodyDelta = 0;
       for (let i = 0; i < target.count; i++) {
@@ -326,12 +423,14 @@ describe('rigged orc', () => {
   });
   it('raises a fist with a straight wrist, slams down at the melee hit, and barely moves the free arm', async () => {
     const scene = new THREE.Scene(),
-      renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+      renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     renderer.update(0, enemy, 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
     const point = (name: string) =>
-      mesh.skeleton.bones.find((b) => b.name === name)!.getWorldPosition(new THREE.Vector3());
+      required(mesh.skeleton.bones.find((b) => b.name === name)).getWorldPosition(
+        new THREE.Vector3(),
+      );
     const restHand = point('rightHand');
     const freeHand = point('leftHand');
     const lengths = ['left', 'right'].map((side) => [
@@ -382,11 +481,11 @@ describe('rigged orc', () => {
       expect(fist.max.y).toBeLessThan(shoulder.y - 0.15);
       for (const [i, side] of ['left', 'right'].entries()) {
         expect(point(`${side}UpperArm`).distanceTo(point(`${side}Forearm`))).toBeCloseTo(
-          lengths[i][0],
+          required(at(lengths, i)[0]),
           4,
         );
         expect(point(`${side}Forearm`).distanceTo(point(`${side}Hand`))).toBeCloseTo(
-          lengths[i][1],
+          required(at(lengths, i)[1]),
           4,
         );
       }
@@ -398,15 +497,18 @@ describe('rigged orc', () => {
   });
   it('gives the free fist a tiny sway through attack blends and restores its walk afterward', async () => {
     const scene = new THREE.Scene(),
-      renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+      renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     renderer.update(0, enemy, 0, 1.2, 1, 2, 0.4);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
     const positions = mesh.geometry.getAttribute('position'),
       joints = mesh.geometry.getAttribute('skinIndex'),
       weights = mesh.geometry.getAttribute('skinWeight');
     const leftHand = mesh.skeleton.bones.findIndex((bone) => bone.name === 'leftHand');
-    const sample: { index: number; position: THREE.Vector3 }[] = [];
+    const sample: {
+      index: number;
+      position: THREE.Vector3;
+    }[] = [];
     for (let i = 0; i < positions.count; i++) {
       let handWeight = 0;
       for (let j = 0; j < 4; j++)
@@ -433,7 +535,7 @@ describe('rigged orc', () => {
     enemy.cooldown = 0;
     renderer.update(0, enemy, 0, 3, 1, 2, 2);
     const freshScene = new THREE.Scene(),
-      fresh = new OrcRenderer(freshScene, await assetPromise);
+      fresh = new OrcRenderer(freshScene, validateOrcAsset(await assetPromise));
     fresh.update(0, enemy, 0, 3, 1, 2, 2);
     const baseline = freshScene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
     for (const point of sample)
@@ -447,8 +549,8 @@ describe('rigged orc', () => {
   });
   it('keeps the front armor spike rigid with its plate throughout a punch', async () => {
     const scene = new THREE.Scene();
-    const renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+    const renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     renderer.update(0, enemy, 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
     const p = mesh.geometry.getAttribute('position');
@@ -469,9 +571,9 @@ describe('rigged orc', () => {
       enemy.windup = time < 0.55 ? 0.55 - time : 0;
       enemy.cooldown = time >= 0.55 ? 1.8 - time : 0;
       renderer.update(0, enemy, 0, 0, 0);
-      const transform = mesh.skeleton.bones[plate].matrixWorld
-        .clone()
-        .multiply(mesh.skeleton.boneInverses[plate]);
+      const transform = at(mesh.skeleton.bones, plate)
+        .matrixWorld.clone()
+        .multiply(at(mesh.skeleton.boneInverses, plate));
       for (const i of spike) {
         const expected = new THREE.Vector3().fromBufferAttribute(p, i).applyMatrix4(transform);
         expect(mesh.getVertexPosition(i, new THREE.Vector3()).distanceTo(expected)).toBeLessThan(
@@ -483,8 +585,8 @@ describe('rigged orc', () => {
   });
   it('isolates the inner collar from arm motion and preserves the fist at the raised peak', async () => {
     const scene = new THREE.Scene(),
-      renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+      renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     renderer.update(0, enemy, 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
     const p = mesh.geometry.getAttribute('position'),
@@ -506,17 +608,19 @@ describe('rigged orc', () => {
     expect(collar).toBeGreaterThan(100);
     enemy.windup = 0.2;
     renderer.update(0, enemy, 0, 0, 0, 1.5);
-    const bone = (name: string) => mesh.skeleton.bones.find((b) => b.name === name)!;
+    const bone = (name: string) => required(mesh.skeleton.bones.find((b) => b.name === name));
     const skin = (name: string) =>
       new THREE.Matrix4().multiplyMatrices(
         bone(name).matrixWorld,
-        mesh.skeleton.boneInverses[mesh.skeleton.bones.indexOf(bone(name))],
+        at(mesh.skeleton.boneInverses, mesh.skeleton.bones.indexOf(bone(name))),
       );
     const hand = skin('rightHand'),
       forearm = skin('rightForearm');
     const restPoint = (name: string) =>
       new THREE.Vector3().setFromMatrixPosition(
-        mesh.skeleton.boneInverses[mesh.skeleton.bones.indexOf(bone(name))].clone().invert(),
+        at(mesh.skeleton.boneInverses, mesh.skeleton.bones.indexOf(bone(name)))
+          .clone()
+          .invert(),
       );
     const hingeNormal = restPoint('rightForearm')
       .sub(restPoint('rightUpperArm'))
@@ -549,8 +653,8 @@ describe('rigged orc', () => {
   });
   it('keeps the forearm core rigid throughout the slam instead of stretching it back to the torso', async () => {
     const scene = new THREE.Scene();
-    const renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+    const renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     renderer.update(0, enemy, 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
     const positions = mesh.geometry.getAttribute('position');
@@ -571,8 +675,8 @@ describe('rigged orc', () => {
       enemy.cooldown = time >= 0.55 ? 1.8 - time : 0;
       renderer.update(0, enemy, 0, 0, 0);
       const skin = new THREE.Matrix4().multiplyMatrices(
-        mesh.skeleton.bones[forearm].matrixWorld,
-        mesh.skeleton.boneInverses[forearm],
+        at(mesh.skeleton.bones, forearm).matrixWorld,
+        at(mesh.skeleton.boneInverses, forearm),
       );
       for (const index of core) {
         const expected = new THREE.Vector3()
@@ -587,15 +691,15 @@ describe('rigged orc', () => {
   });
   it('returns the punching arm without wrist flips or torn shoulder triangles', async () => {
     const scene = new THREE.Scene();
-    const renderer = new OrcRenderer(scene, await assetPromise);
-    const enemy = new Simulation().enemies[0];
+    const renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    const enemy = at(new Simulation().enemies, 0);
     renderer.update(0, enemy, 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
     const bones = ['rightUpperArm', 'rightForearm', 'rightHand'].map((name) =>
-      mesh.skeleton.bones.find((bone) => bone.name === name)!,
+      required(mesh.skeleton.bones.find((bone) => bone.name === name)),
     );
     const positions = mesh.geometry.getAttribute('position');
-    const indices = mesh.geometry.index!;
+    const indices = required(mesh.geometry.index);
     const edges: [number, number, number][] = [];
     const seen = new Set<string>();
     for (let i = 0; i < indices.count; i += 3) {
@@ -629,7 +733,9 @@ describe('rigged orc', () => {
       if (previous)
         rotations.forEach((rotation, i) => {
           // The old per-frame hinge sign switch jumped 117 degrees in 10 ms.
-          expect(rotation.angleTo(previous![i])).toBeLessThan(THREE.MathUtils.degToRad(15));
+          expect(rotation.angleTo(at(required(previous), i))).toBeLessThan(
+            THREE.MathUtils.degToRad(15),
+          );
         });
       previous = rotations;
       if (frame % 5 !== 0) continue;
@@ -637,7 +743,7 @@ describe('rigged orc', () => {
       const vertex = (index: number) => {
         if (!vertices.has(index))
           vertices.set(index, mesh.getVertexPosition(index, new THREE.Vector3()));
-        return vertices.get(index)!;
+        return required(vertices.get(index));
       };
       let largestStretch = 0;
       for (const [a, b, length] of edges)
@@ -649,8 +755,8 @@ describe('rigged orc', () => {
   });
   it('binds the eye sockets entirely to the head so strikes cannot pull them away from the eyes', async () => {
     const scene = new THREE.Scene(),
-      renderer = new OrcRenderer(scene, await assetPromise);
-    renderer.update(0, new Simulation().enemies[0], 0, 0, 0);
+      renderer = new OrcRenderer(scene, validateOrcAsset(await assetPromise));
+    renderer.update(0, at(new Simulation().enemies, 0), 0, 0, 0);
     const mesh = scene.getObjectByName('creature-orc-0') as THREE.SkinnedMesh;
     const position = mesh.geometry.getAttribute('position');
     const joints = mesh.geometry.getAttribute('skinIndex');

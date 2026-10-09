@@ -9,11 +9,21 @@ import {
 
 export type Settings = {
   quality: Quality;
-  renderScale: number;
+  renderScale: RenderScale;
   fieldOfView: number;
   sensitivity: number;
   sound: boolean;
 };
+
+export type RenderScale = (typeof RENDER_SCALE_SETTINGS.OPTIONS)[number]['VALUE'];
+
+function isQuality(value: unknown): value is Quality {
+  return QUALITY_OPTIONS.some((quality) => quality === value);
+}
+
+function isRenderScale(value: unknown): value is RenderScale {
+  return RENDER_SCALE_SETTINGS.OPTIONS.some((option) => option.VALUE === value);
+}
 
 const defaultSettings: Settings = {
   quality: DEFAULT_SETTINGS.QUALITY,
@@ -24,13 +34,18 @@ const defaultSettings: Settings = {
 };
 
 export function parseSettings(value: string | null): Settings {
+  if (value === null) return defaultSettings;
   try {
-    const s = JSON.parse(value || 'null');
+    const s: unknown = JSON.parse(value);
     if (
-      !s ||
-      !QUALITY_OPTIONS.includes(s.quality) ||
+      typeof s !== 'object' ||
+      s === null ||
+      !('quality' in s) ||
+      !isQuality(s.quality) ||
+      !('sensitivity' in s) ||
       typeof s.sensitivity !== 'number' ||
       !(s.sensitivity >= SENSITIVITY_SETTINGS.MIN && s.sensitivity <= SENSITIVITY_SETTINGS.MAX) ||
+      !('sound' in s) ||
       typeof s.sound !== 'boolean'
     ) {
       return defaultSettings;
@@ -40,14 +55,16 @@ export function parseSettings(value: string | null): Settings {
       sensitivity: s.sensitivity,
       sound: s.sound,
       fieldOfView:
+        'fieldOfView' in s &&
         typeof s.fieldOfView === 'number' &&
         s.fieldOfView >= FIELD_OF_VIEW_SETTINGS.MIN &&
         s.fieldOfView <= FIELD_OF_VIEW_SETTINGS.MAX
           ? s.fieldOfView
           : FIELD_OF_VIEW_SETTINGS.DEFAULT,
-      renderScale: RENDER_SCALE_SETTINGS.OPTIONS.some((option) => option.VALUE === s.renderScale)
-        ? s.renderScale
-        : RENDER_SCALE_SETTINGS.DEFAULT,
+      renderScale:
+        'renderScale' in s && isRenderScale(s.renderScale)
+          ? s.renderScale
+          : RENDER_SCALE_SETTINGS.DEFAULT,
     };
   } catch {
     return defaultSettings;

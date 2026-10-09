@@ -1,10 +1,10 @@
+import { assign } from '../lib/assign';
+import { at } from '../lib/assert';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
 afterEach(() => {
   vi.doUnmock('../config/gameplay');
   vi.resetModules();
 });
-
 describe('simulation config integration', () => {
   it('keeps orc health, damage, and movement independent when slime stats change', async () => {
     vi.resetModules();
@@ -30,22 +30,20 @@ describe('simulation config integration', () => {
       sim.remaining = 1;
       sim.spawn();
       sim.spawnCooldown = 100;
-      Object.assign(sim.enemies[0], { x: 0, z: -10, spawnRemaining: 0 });
+      assign(at(sim.enemies, 0), { x: 0, z: -10, spawnRemaining: 0 });
     }
-    expect(slime.enemies[0].hp).toBe(11);
-    expect(orc.enemies[0].hp).toBe(4);
+    expect(at(slime.enemies, 0).hp).toBe(11);
+    expect(at(orc.enemies, 0).hp).toBe(4);
     for (const sim of [slime, orc]) sim.step(0.1, blankInput());
-    expect(slime.enemies[0].z + 10).toBeCloseTo((8 + 2 * 0.9) * 0.1);
-    expect(orc.enemies[0].z + 10).toBeCloseTo((0.837 + 2 * 0.0496) * 0.1);
-
-    Object.assign(orc.enemies[0], { x: orc.x, z: orc.z - 1.5, windup: 0.01 });
+    expect(at(slime.enemies, 0).z + 10).toBeCloseTo((8 + 2 * 0.9) * 0.1);
+    expect(at(orc.enemies, 0).z + 10).toBeCloseTo((0.837 + 2 * 0.0496) * 0.1);
+    assign(at(orc.enemies, 0), { x: orc.x, z: orc.z - 1.5, windup: 0.01 });
     orc.step(0.02, blankInput());
     expect(orc.hp).toBe(82);
-    Object.assign(slime.enemies[0], { x: slime.x, z: slime.z - 1, windup: 0.01 });
+    assign(at(slime.enemies, 0), { x: slime.x, z: slime.z - 1, windup: 0.01 });
     slime.step(0.02, blankInput());
     expect(slime.hp).toBe(63);
   });
-
   it('uses configured player health, healing, spell damage, and first-wave composition', async () => {
     vi.resetModules();
     vi.doMock('../config/gameplay', async (importOriginal) => {
@@ -63,10 +61,10 @@ describe('simulation config integration', () => {
     sim.reset();
     expect(sim.hp).toBe(200);
     sim.hp = 180;
-    sim.kill(sim.enemies[0]);
+    sim.kill(at(sim.enemies, 0));
     expect(sim.hp).toBe(187);
     sim.hp = 199;
-    sim.kill(sim.enemies[0]);
+    sim.kill(at(sim.enemies, 0));
     expect(sim.hp).toBe(200);
     sim.hp = 150;
     sim.waveWait = 0;
@@ -74,12 +72,16 @@ describe('simulation config integration', () => {
     expect(sim.hp).toBe(173);
     expect(sim.remaining).toBe(4);
     for (let i = 0; i < 4; i++) sim.spawn();
-    expect(sim.enemies.filter((e) => e.active).map((e) => e.kind)).toEqual([0, 0, 1, 1]);
-
+    expect(sim.enemies.filter((e) => e.active).map((e) => e.id)).toEqual([
+      'slime',
+      'slime',
+      'orc',
+      'orc',
+    ]);
     for (const enemy of sim.enemies) enemy.active = false;
-    const orc = sim.enemies[0];
-    Object.assign(orc, { active: true, kind: 1, hp: 4, x: 0, z: 3, windup: 0, cooldown: 100 });
-    Object.assign(sim.projectiles[0], {
+    const orc = at(sim.enemies, 0);
+    assign(orc, { active: true, id: 'orc', hp: 4, x: 0, z: 3, windup: 0, cooldown: 100 });
+    assign(at(sim.projectiles, 0), {
       active: true,
       x: 0,
       y: 1.35,

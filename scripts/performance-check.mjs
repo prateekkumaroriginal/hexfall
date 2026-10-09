@@ -39,7 +39,7 @@ try {
       engine.sim.enemies.forEach((e, i) =>
         Object.assign(e, {
           active: i < enemies,
-          kind: i % 2,
+          id: i % 2 ? 'orc' : 'slime',
           x: ((i % 6) - 2.5) * 3,
           z: -Math.floor(i / 6) * 3,
           phase: i,

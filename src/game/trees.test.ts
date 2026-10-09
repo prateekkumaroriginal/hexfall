@@ -1,3 +1,4 @@
+import { isInstancedMesh } from './three-types';
 import * as THREE from 'three';
 import { expect, it } from 'vitest';
 import { TreeRenderer } from './trees';
@@ -47,7 +48,7 @@ it('renders every trunk at its shared collision position and scale', () => {
   } finally {
     const materials = new Set<THREE.Material>();
     scene.traverse((object) => {
-      if (object instanceof THREE.InstancedMesh) {
+      if (isInstancedMesh(object)) {
         object.geometry.dispose();
         for (const material of Array.isArray(object.material) ? object.material : [object.material])
           materials.add(material);

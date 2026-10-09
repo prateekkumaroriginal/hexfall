@@ -6,9 +6,9 @@ const prepared = new WeakSet<THREE.MeshStandardMaterial>();
 export function prepareOrcSkinMaterial(material: THREE.Material) {
   if (!(material instanceof THREE.MeshStandardMaterial) || prepared.has(material)) return;
   prepared.add(material);
-  const previous = material.onBeforeCompile;
+  const previous = material.onBeforeCompile.bind(material);
   material.onBeforeCompile = (shader, renderer) => {
-    previous.call(material, shader, renderer);
+    previous(shader, renderer);
     shader.vertexShader = `varying vec3 orcRestPosition;\n${shader.vertexShader}`.replace(
       '#include <begin_vertex>',
       '#include <begin_vertex>\norcRestPosition = position;',

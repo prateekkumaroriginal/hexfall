@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-
+import { at } from '../lib/assert';
 // A shared 512px paint layer supplies the reference's embedded bubbles. It is
 // generated once, mipmapped, and used by every slime without another draw call.
 export function slimePaint() {
@@ -23,7 +23,7 @@ export function slimePaint() {
     [0.12, 0.49, 0.019],
     [0.09, 0.27, 0.022],
     [0.95, 0.36, 0.018],
-  ];
+  ] as const;
   const shades = new Float64Array(size * size);
   for (let y = 0; y < size; y++)
     for (let x = 0; x < size; x++) {
@@ -47,11 +47,12 @@ export function slimePaint() {
         if (d >= 1.15) continue;
         const mask = 1 - THREE.MathUtils.smoothstep(d, 0.84, 1.15);
         const ring = Math.exp(-(((d - 0.82) / 0.13) ** 2));
-        shades[y * size + x] *= 1 + mask * (-0.11 + ring * (dy > 0 ? 0.12 : 0));
+        shades[y * size + x] =
+          at(shades, y * size + x) * (1 + mask * (-0.11 + ring * (dy > 0 ? 0.12 : 0)));
       }
   }
   for (let i = 0; i < shades.length; i++) {
-    const shade = shades[i],
+    const shade = at(shades, i),
       pixel = i * 4;
     pixels[pixel] = Math.round(255 * Math.min(1, shade));
     pixels[pixel + 1] = Math.round(255 * Math.min(1, shade * 1.025));

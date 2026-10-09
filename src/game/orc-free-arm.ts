@@ -1,11 +1,16 @@
 import * as THREE from 'three';
+import type { OrcRig } from './orc-rig';
 
 // Keep the incoming free-arm pose with a tiny shoulder sway during attacks.
 // Saved matrices are relative to the orc, so turning toward the player still works.
 export class OrcFreeArm {
-  private bones: THREE.Bone[];
-  private poses = [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4()];
-  private animated = [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4()];
+  private joints: {
+    bone: THREE.Bone;
+    parent: THREE.Object3D;
+    pose: THREE.Matrix4;
+    animated: THREE.Matrix4;
+  }[];
+  private shoulderPose: THREE.Matrix4;
   private inverseRoot = new THREE.Matrix4();
   private local = new THREE.Matrix4();
   private motion = new THREE.Matrix4();
@@ -15,17 +20,23 @@ export class OrcFreeArm {
   private holding = false;
   private applied = false;
 
-  constructor(private root: THREE.Group) {
-    this.bones = ['leftUpperArm', 'leftForearm', 'leftHand'].map(
-      (name) => root.getObjectByName(name) as THREE.Bone,
-    );
+  constructor(
+    private root: THREE.Group,
+    bindings: OrcRig['freeArm'],
+  ) {
+    this.shoulderPose = new THREE.Matrix4();
+    this.joints = bindings.map(({ bone, parent }, i) => ({
+      bone,
+      parent,
+      pose: i === 0 ? this.shoulderPose : new THREE.Matrix4(),
+      animated: new THREE.Matrix4(),
+    }));
   }
 
   restore() {
     if (!this.applied) return;
-    for (let i = 0; i < this.bones.length; i++) {
-      const bone = this.bones[i];
-      this.animated[i].decompose(bone.position, bone.quaternion, bone.scale);
+    for (const { bone, animated } of this.joints) {
+      animated.decompose(bone.position, bone.quaternion, bone.scale);
       bone.updateMatrix();
     }
     this.applied = false;
@@ -39,8 +50,8 @@ export class OrcFreeArm {
     if (this.holding) return;
     this.root.updateMatrixWorld(true);
     this.inverseRoot.copy(this.root.matrixWorld).invert();
-    for (let i = 0; i < this.bones.length; i++)
-      this.poses[i].multiplyMatrices(this.inverseRoot, this.bones[i].matrixWorld);
+    for (const { bone, pose } of this.joints)
+      pose.multiplyMatrices(this.inverseRoot, bone.matrixWorld);
     this.holding = true;
   }
 
@@ -54,20 +65,19 @@ export class OrcFreeArm {
       0,
       envelope * 0.005 * Math.sin(Math.PI * t),
     );
-    this.pivot.setFromMatrixPosition(this.poses[0]);
+    this.pivot.setFromMatrixPosition(this.shoulderPose);
     this.motion.makeRotationFromEuler(this.sway);
     this.rotatedPivot.copy(this.pivot).applyMatrix4(this.motion);
     this.motion.setPosition(this.rotatedPivot.subVectors(this.pivot, this.rotatedPivot));
     this.root.updateMatrixWorld(true);
-    for (let i = 0; i < this.bones.length; i++) this.animated[i].copy(this.bones[i].matrix);
-    for (let i = 0; i < this.bones.length; i++) {
-      const bone = this.bones[i];
+    for (const { bone, animated } of this.joints) animated.copy(bone.matrix);
+    for (const { bone, parent, pose } of this.joints) {
       this.local
-        .copy(bone.parent!.matrixWorld)
+        .copy(parent.matrixWorld)
         .invert()
         .multiply(this.root.matrixWorld)
         .multiply(this.motion)
-        .multiply(this.poses[i]);
+        .multiply(pose);
       this.local.decompose(bone.position, bone.quaternion, bone.scale);
       bone.updateMatrix();
       bone.updateMatrixWorld(true);

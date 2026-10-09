@@ -28,7 +28,7 @@ try {
     for (let i = 0; i < 24; i++)
       Object.assign(e.sim.enemies[i], {
         active: true,
-        kind: i % 2,
+        id: i % 2 ? 'orc' : 'slime',
         x: ((i % 6) - 2.5) * 3,
         z: -Math.floor(i / 6) * 3,
         hp: 6,

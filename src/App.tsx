@@ -1,3 +1,4 @@
+import { required } from './lib/assert';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Engine } from './game/engine';
 import type { Settings } from './settings';
@@ -15,7 +16,6 @@ import type { Snapshot } from './game/simulation';
 import { Button } from './components/ui/button';
 import { PanelContent, PanelOverlay, PanelTitle } from './components/ui/panel';
 import { cn } from './lib/utils';
-
 const initial: Snapshot = {
   phase: 'ready',
   hp: PLAYER.MAX_HEALTH,
@@ -42,7 +42,6 @@ const formatTime = (n: number) =>
     .padStart(2, '0')}:${Math.floor(n % 60)
     .toString()
     .padStart(2, '0')}`;
-
 export default function App() {
   const host = useRef<HTMLDivElement>(null),
     engine = useRef<Engine | null>(null);
@@ -87,7 +86,7 @@ export default function App() {
   );
   useEffect(() => {
     let cancelled = false;
-    const element = host.current!;
+    const element = required(host.current, 'Missing game canvas host');
     const onError = (event: Event) => setError((event as CustomEvent<string>).detail);
     element.addEventListener('engine-error', onError);
     import('./game/engine')
@@ -177,7 +176,7 @@ export default function App() {
           </h1>
           <Button
             className="w-[320px] min-[1600px]:min-h-[60px] min-[1600px]:w-[360px] compact:max-w-full"
-            onClick={start}
+            onClick={() => void start()}
             disabled={!ready}
           >
             {ready ? 'PLAY' : 'LOADING'}
@@ -279,7 +278,7 @@ export default function App() {
                 </div>
               </div>
             ) : null}
-            <Button className="mt-7" onClick={start}>
+            <Button className="mt-7" onClick={() => void start()}>
               {ended ? 'PLAY AGAIN' : 'RESUME'}
             </Button>
             <Button variant="secondary" onClick={() => setPanel('settings')}>

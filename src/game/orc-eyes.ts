@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { required } from '../lib/assert';
+import type { OrcRig } from './orc-rig';
 
 // One shared vertex-colored mesh per eye, including the iris and pupil.
 export function createOrcEyeGeometry() {
@@ -18,27 +20,25 @@ export function createOrcEyeGeometry() {
     for (let i = 0; i < colors.length; i += 3) tint.toArray(colors, i);
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   }
-  const combined = mergeGeometries([globe, iris, pupil])!;
+  const combined = required(mergeGeometries([globe, iris, pupil]), 'Failed to build orc eyes');
   for (const geometry of [globe, iris, pupil]) geometry.dispose();
   return combined;
 }
 
 export class OrcEyes {
-  readonly eyes: THREE.Group[] = [];
-  private surfaces: THREE.Mesh[] = [];
+  private eyes: { group: THREE.Group; surface: THREE.Mesh }[] = [];
   constructor(
-    body: THREE.SkinnedMesh,
+    rig: Pick<OrcRig, 'head' | 'headInverse' | 'eyeCenters'>,
     slot: number,
     geometry: THREE.BufferGeometry,
     material: THREE.Material,
   ) {
-    const headIndex = body.skeleton.bones.findIndex((bone) => bone.name === 'head');
     const anchor = new THREE.Group();
     anchor.name = `orc-eye-anchor-${slot}`;
     anchor.matrixAutoUpdate = false;
-    anchor.matrix.copy(body.skeleton.boneInverses[headIndex]);
-    body.skeleton.bones[headIndex].add(anchor);
-    const centers = body.userData.orc_eye_centers as number[];
+    anchor.matrix.copy(rig.headInverse);
+    rig.head.add(anchor);
+    const centers = rig.eyeCenters;
     for (let eyeIndex = 0; eyeIndex < 2; eyeIndex++) {
       const eye = new THREE.Group();
       eye.name = `orc-eye-${slot}-${eyeIndex}`;
@@ -52,15 +52,14 @@ export class OrcEyes {
       surface.frustumCulled = false;
       eye.add(surface);
       anchor.add(eye);
-      this.eyes.push(eye);
-      this.surfaces.push(surface);
+      this.eyes.push({ group: eye, surface });
     }
   }
   update(target: THREE.Vector3, blink: number) {
-    for (let i = 0; i < this.eyes.length; i++) {
-      this.eyes[i].lookAt(target);
-      this.surfaces[i].scale.y = 0.03 * Math.max(0.01, 1 - blink);
-      this.surfaces[i].visible = blink < 0.97;
+    for (const { group, surface } of this.eyes) {
+      group.lookAt(target);
+      surface.scale.y = 0.03 * Math.max(0.01, 1 - blink);
+      surface.visible = blink < 0.97;
     }
   }
 }

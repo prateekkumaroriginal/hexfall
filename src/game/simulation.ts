@@ -1,3 +1,4 @@
+import { assign } from '../lib/assign';
 import {
   COMBAT,
   HIT_FEEDBACK,
@@ -11,6 +12,7 @@ import {
 import { MAX_ENEMIES, MAX_PROJECTILES } from '../config/runtime';
 import { ARENA_HALF_WIDTH, ARENA_HALF_DEPTH, WALL_HEIGHT } from '../config/world';
 import { WORLD_OBSTACLES } from './world';
+import { at } from '../lib/assert';
 export type Projectile = {
   active: boolean;
   x: number;
@@ -43,12 +45,17 @@ export function slimeSpawnScale(remaining: number, vertical = false) {
 const TRACE_DIRECTION_EPSILON = 0.0001;
 export type Phase = 'ready' | 'playing' | 'paused' | 'dead' | 'won';
 export type Input = { forward: number; strafe: number; fire: boolean; yaw: number; pitch: number };
+export type EnemyId = 'slime' | 'orc';
+export const ENEMY_STATS = { slime: SLIME, orc: ORC } satisfies Record<
+  EnemyId,
+  typeof SLIME | typeof ORC
+>;
 export type Enemy = {
   active: boolean;
   x: number;
   z: number;
   hp: number;
-  kind: number;
+  id: EnemyId;
   cooldown: number;
   windup: number;
   phase: number;
@@ -90,7 +97,7 @@ export class Simulation {
     x: 0,
     z: 0,
     hp: 0,
-    kind: 0,
+    id: 'slime',
     cooldown: 0,
     windup: 0,
     phase: 0,
@@ -231,9 +238,9 @@ export class Simulation {
     for (const e of this.enemies) {
       if (!e.active) continue;
       // Ellipsoid hit volumes match the broad orc and low slime silhouettes.
-      const width = e.kind ? 1 : slimeSpawnScale(e.spawnRemaining),
-        height = e.kind ? 1 : slimeSpawnScale(e.spawnRemaining, true);
-      const hitbox = (e.kind ? ORC : SLIME).HITBOX_RADII_UNITS;
+      const width = e.id === 'orc' ? 1 : slimeSpawnScale(e.spawnRemaining),
+        height = e.id === 'orc' ? 1 : slimeSpawnScale(e.spawnRemaining, true);
+      const hitbox = ENEMY_STATS[e.id].HITBOX_RADII_UNITS;
       const sx = hitbox.X * width,
         sy = hitbox.Y * height,
         sz = hitbox.Z * width;
@@ -322,15 +329,15 @@ export class Simulation {
       side >= 2
         ? (side === 2 ? -1 : 1) * (ARENA_HALF_DEPTH - WAVES.SPAWN_EDGE_INSET_UNITS)
         : along * (ARENA_HALF_DEPTH - WAVES.SPAWN_ALONG_INSET_UNITS);
-    const kind =
+    const id: EnemyId =
       this.wave === 1
         ? this.remaining <= WAVES.FIRST_WAVE.ORCS
-          ? 1
-          : 0
+          ? 'orc'
+          : 'slime'
         : this.wave > 1 && this.random() > 1 - WAVES.LATER_WAVE_ORC_PROBABILITY
-          ? 1
-          : 0;
-    const stats = kind ? ORC : SLIME;
+          ? 'orc'
+          : 'slime';
+    const stats = ENEMY_STATS[id];
     const radius = stats.COLLISION_RADIUS_UNITS;
     const initialAlong = side < 2 ? z : x;
     // Keep birth puddles and orcs out of trunks, including trees beside the spawn edges.
@@ -356,24 +363,24 @@ export class Simulation {
           Math.min(ARENA_HALF_WIDTH - WAVES.SPAWN_ALONG_INSET_UNITS, initialAlong + offset),
         );
     }
-    Object.assign(e, {
+    assign(e, {
       active: true,
       x,
       z,
       hp: stats.HEALTH,
-      kind,
+      id,
       cooldown: 0,
       windup: 0,
       phase: this.random() * Math.PI * 2,
       flash: 0,
       spawnRemaining: stats.SPAWN_DURATION_SECONDS,
-    });
+    } satisfies Enemy);
     this.remaining--;
   }
   kill(e: Enemy) {
     e.active = false;
     this.kills++;
-    this.score += (e.kind ? ORC : SLIME).KILL_SCORE;
+    this.score += ENEMY_STATS[e.id].KILL_SCORE;
     this.hp = Math.min(PLAYER.MAX_HEALTH, this.hp + PLAYER.HEALING_PER_KILL);
   }
   damage(amount: number) {
@@ -415,7 +422,7 @@ export class Simulation {
     }
     // Keep the first-person camera outside the orc's torso during melee.
     for (const enemy of this.enemies) {
-      if (!enemy.active || !enemy.kind || enemy.spawnRemaining > 0) continue;
+      if (!enemy.active || enemy.id !== 'orc' || enemy.spawnRemaining > 0) continue;
       const dx = this.x - enemy.x,
         dz = this.z - enemy.z;
       const distance = Math.hypot(dx, dz);
@@ -466,7 +473,7 @@ export class Simulation {
         dz = this.z - e.z,
         d = Math.hypot(dx, dz) || 1;
       e.cooldown = Math.max(0, e.cooldown - dt);
-      const stats = e.kind ? ORC : SLIME;
+      const stats = ENEMY_STATS[e.id];
       const reach = stats.ATTACK_REACH_UNITS;
       if (e.windup > 0) {
         e.windup = Math.max(0, e.windup - dt);
@@ -494,18 +501,17 @@ export class Simulation {
       const movementSpeed =
         stats.BASE_SPEED_UNITS_PER_SECOND + this.wave * stats.SPEED_PER_WAVE_UNITS_PER_SECOND;
       const recoveringPunch =
-        e.kind && e.cooldown > stats.ATTACK_COOLDOWN_SECONDS - stats.PUNCH_RECOVERY_SECONDS;
+        e.id === 'orc' && e.cooldown > stats.ATTACK_COOLDOWN_SECONDS - stats.PUNCH_RECOVERY_SECONDS;
       const standOff = stats.STOPPING_DISTANCE_UNITS;
       const speed = e.windup > 0 || recoveringPunch || d < standOff ? 0 : movementSpeed;
       e.x += (vx / moveLength) * speed * dt;
       e.z += (vz / moveLength) * speed * dt;
     }
     // Bounded pair separation keeps melee crowds from occupying the same point.
-    for (let i = 0; i < this.enemies.length; i++) {
-      const a = this.enemies[i];
+    for (const [i, a] of this.enemies.entries()) {
       if (!a.active || a.spawnRemaining > 0) continue;
       for (let j = i + 1; j < this.enemies.length; j++) {
-        const b = this.enemies[j];
+        const b = at(this.enemies, j);
         if (!b.active || b.spawnRemaining > 0) continue;
         const dx = b.x - a.x,
           dz = b.z - a.z,
@@ -530,7 +536,7 @@ export class Simulation {
           const dx = e.x - p.x,
             dz = e.z - p.z,
             d = Math.hypot(dx, dz);
-          const radius = p.radius + (e.kind ? ORC : SLIME).COLLISION_RADIUS_UNITS;
+          const radius = p.radius + ENEMY_STATS[e.id].COLLISION_RADIUS_UNITS;
           if (d < radius) {
             const inward = Math.hypot(p.x, p.z) || 1;
             e.x = p.x + (d ? dx / d : -p.x / inward) * radius;

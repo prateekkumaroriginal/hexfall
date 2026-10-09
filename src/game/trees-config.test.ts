@@ -1,3 +1,4 @@
+import { isInstancedMesh } from './three-types';
 import * as THREE from 'three';
 import { afterEach, expect, it, vi } from 'vitest';
 
@@ -50,7 +51,7 @@ it('renders a fourth configured tree variant and a larger tree count', async () 
   } finally {
     const materials = new Set<THREE.Material>();
     scene.traverse((object) => {
-      if (object instanceof THREE.InstancedMesh) {
+      if (isInstancedMesh(object)) {
         object.geometry.dispose();
         for (const material of Array.isArray(object.material)
           ? object.material

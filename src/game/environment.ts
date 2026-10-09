@@ -1,21 +1,20 @@
+import { required, at } from '../lib/assert';
 import * as THREE from 'three';
 import { TreeRenderer } from './trees';
 import { BOULDERS, ENVIRONMENT_SEED } from '../config/world';
 import { GRASS, QUALITY_PRESETS } from '../config/rendering';
 import type { Quality } from './performance';
 import { buildMountains } from './mountains';
-
 function randomSource(seed: number) {
   return () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
     return (seed >>> 0) / 4294967296;
   };
 }
-
 function paintTexture(kind: 'grass' | 'ground' | 'rock', random: () => number) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 256;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = required(canvas.getContext('2d'), `Failed to create ${kind} texture canvas`);
   if (kind === 'ground' || kind === 'rock') {
     const data = ctx.createImageData(256, 256);
     for (let y = 0; y < 256; y++)
@@ -25,7 +24,7 @@ function paintTexture(kind: 'grass' | 'ground' | 'rock', random: () => number) {
         const i = (y * 256 + x) * 4;
         const base = kind === 'rock' ? [135, 140, 133] : [66, 85, 43];
         for (let c = 0; c < 3; c++)
-          data.data[i + c] = base[c] + noise * (kind === 'rock' ? 30 : 22);
+          data.data[i + c] = at(base, c) + noise * (kind === 'rock' ? 30 : 22);
         data.data[i + 3] = 255;
       }
     ctx.putImageData(data, 0, 0);
@@ -66,16 +65,19 @@ function paintTexture(kind: 'grass' | 'ground' | 'rock', random: () => number) {
   }
   return texture;
 }
-
 export class Environment {
-  private grassTiles: { mesh: THREE.InstancedMesh; x: number; z: number }[] = [];
+  private grassTiles: {
+    mesh: THREE.InstancedMesh;
+    x: number;
+    z: number;
+  }[] = [];
   private qualityScale: number = GRASS.INITIAL_DENSITY_SCALE;
   private grassRadius: number = GRASS.INITIAL_RADIUS_UNITS;
   private frustum = new THREE.Frustum();
   private projection = new THREE.Matrix4();
   private trees: TreeRenderer;
   private textures: THREE.Texture[] = [];
-  private sky: THREE.Mesh;
+  private sky: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private skyTarget?: THREE.WebGLCubeRenderTarget;
   private wind = { value: 0 };
   private skyTime = { value: 0 };
@@ -140,7 +142,6 @@ export class Environment {
     sky.renderOrder = 100;
     this.sky = sky;
     scene.add(sky);
-
     const groundMap = paintTexture('ground', random),
       grassMap = paintTexture('grass', random),
       rockMap = paintTexture('rock', random);
@@ -153,7 +154,6 @@ export class Environment {
     ground.position.y = -0.06;
     ground.name = 'valley-floor';
     scene.add(ground);
-
     // A clump contains many painted blades on three crossed cards, six triangles total.
     const blade = new THREE.BufferGeometry(),
       positions: number[] = [],
@@ -220,9 +220,7 @@ export class Environment {
         scene.add(mesh);
         this.grassTiles.push({ mesh, x: cx, z: cz });
       }
-
     this.trees = new TreeRenderer(scene);
-
     const rockGeo = new THREE.IcosahedronGeometry(1, 2);
     const rp = rockGeo.getAttribute('position'),
       rc = [];
@@ -274,19 +272,17 @@ export class Environment {
     }
     rocks.computeBoundingSphere();
     scene.add(rocks);
-
     buildMountains(scene);
   }
-
   bakeSky(renderer: THREE.WebGLRenderer) {
-    const parent = this.sky.parent!,
+    const parent = required(this.sky.parent, 'Sky must be attached before baking'),
       bakeScene = new THREE.Scene();
     bakeScene.add(this.sky);
     this.skyTarget = new THREE.WebGLCubeRenderTarget(256, { generateMipmaps: false });
     const cube = new THREE.CubeCamera(0.1, 500, this.skyTarget);
     cube.update(renderer, bakeScene);
     parent.add(this.sky);
-    (this.sky.material as THREE.Material).dispose();
+    this.sky.material.dispose();
     this.sky.material = new THREE.ShaderMaterial({
       side: THREE.BackSide,
       depthWrite: false,

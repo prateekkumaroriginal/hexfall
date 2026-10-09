@@ -14,7 +14,7 @@ function randomSource(seed: number) {
 function paintTexture(kind: 'grass' | 'ground' | 'rock', random: () => number) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 256;
-  const ctx = required(canvas.getContext('2d'));
+  const ctx = required(canvas.getContext('2d'), `Failed to create ${kind} texture canvas`);
   if (kind === 'ground' || kind === 'rock') {
     const data = ctx.createImageData(256, 256);
     for (let y = 0; y < 256; y++)
@@ -275,7 +275,7 @@ export class Environment {
     buildMountains(scene);
   }
   bakeSky(renderer: THREE.WebGLRenderer) {
-    const parent = required(this.sky.parent),
+    const parent = required(this.sky.parent, 'Sky must be attached before baking'),
       bakeScene = new THREE.Scene();
     bakeScene.add(this.sky);
     this.skyTarget = new THREE.WebGLCubeRenderTarget(256, { generateMipmaps: false });

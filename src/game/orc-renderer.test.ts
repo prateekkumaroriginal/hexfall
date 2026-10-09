@@ -51,9 +51,67 @@ const assetPromise = new GLTFLoader().parseAsync(
 afterEach(() => {
   vi.restoreAllMocks();
   vi.doUnmock('../config/gameplay');
+  vi.doUnmock('../config/rendering');
   vi.resetModules();
 });
 describe('rigged orc', () => {
+  it.each([
+    { value: NaN, index: 0 },
+    { value: Infinity, index: 15 },
+  ])('rejects non-finite head inverse element $index', async ({ value, index }) => {
+    const asset = await assetPromise;
+    const root = clone(asset.scene);
+    if (!isGroup(root)) throw new Error('Invalid orc root');
+    const rig = validateOrcRig(root);
+    const inverse = rig.headInverse.clone();
+    inverse.elements[index] = value;
+    rig.face.skeleton.boneInverses = rig.face.skeleton.boneInverses.map((matrix, boneIndex) =>
+      boneIndex === rig.face.skeleton.bones.indexOf(rig.head) ? inverse : matrix,
+    );
+    vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ ...asset, scene: root });
+    await expect(loadOrcAsset()).rejects.toThrow('Invalid orc head inverse');
+  });
+  it.each(['Idle', 'Walk', 'Punch'] as const)('rejects invalid %s clip durations', async (name) => {
+    const asset = await assetPromise;
+    for (const duration of [0, -1, NaN, Infinity]) {
+      const animations = asset.animations.map((animation) =>
+        animation.name === name ? assign(animation.clone(), { duration }) : animation,
+      );
+      vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ ...asset, animations });
+      await expect(loadOrcAsset()).rejects.toThrow(`Invalid orc ${name} animation duration`);
+    }
+  });
+  it.each([
+    ORC_ANIMATION.PUNCH_BLEND_IN_SECONDS,
+    ORC_ANIMATION.PUNCH_IMPACT_SECONDS,
+    ORC_ANIMATION.PUNCH_BLEND_OUT_SECONDS,
+  ])('rejects a Punch clip ending at %s seconds', async (duration) => {
+    const asset = await assetPromise;
+    const animations = asset.animations.map((animation) =>
+      animation.name === 'Punch' ? assign(animation.clone(), { duration }) : animation,
+    );
+    vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ ...asset, animations });
+    await expect(loadOrcAsset()).rejects.toThrow(
+      'Orc Punch animation is too short for configured impact and blend times',
+    );
+  });
+  it.each(['PUNCH_IMPACT_SECONDS', 'PUNCH_BLEND_IN_SECONDS', 'PUNCH_BLEND_OUT_SECONDS'] as const)(
+    'validates Punch duration against configured %s',
+    async (name) => {
+      const asset = await assetPromise;
+      const duration = required(
+        asset.animations.find((animation) => animation.name === 'Punch'),
+      ).duration;
+      vi.doMock('../config/rendering', async (importOriginal) => {
+        const config = await importOriginal<typeof import('../config/rendering')>();
+        return { ...config, ORC_ANIMATION: { ...config.ORC_ANIMATION, [name]: duration } };
+      });
+      const { validateOrcAsset: validateConfiguredAsset } = await import('./orc-rig');
+      expect(() => validateConfiguredAsset(asset)).toThrow(
+        'Orc Punch animation is too short for configured impact and blend times',
+      );
+    },
+  );
   it.each([
     {
       name: 'head bone',

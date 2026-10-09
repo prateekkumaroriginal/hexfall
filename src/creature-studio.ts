@@ -70,23 +70,24 @@ let compare = false;
 const referenceCanvas = document.createElement('canvas');
 referenceCanvas.style.cssText = 'position:absolute;right:0;top:0;pointer-events:none;display:none';
 document.body.append(referenceCanvas);
-const references = [new Image(), new Image()];
-at(references, 0).src = '/local-artifacts/enemy-concepts/slime-concept.png';
-at(references, 1).src = '/local-artifacts/enemy-concepts/orc-concept.png';
+const references = [new Image(), new Image()] as const;
+references[0].src = '/local-artifacts/enemy-concepts/slime-concept.png';
+references[1].src = '/local-artifacts/enemy-concepts/orc-concept.png';
 references.forEach((image) => {
   image.onload = () => render();
   image.onerror = () => render();
 });
 const compareButton = document.createElement('button');
 compareButton.textContent = 'Concept comparison';
-required(document.querySelector('nav')).append(compareButton);
+const nav = required(document.querySelector('nav'), 'Missing creature studio navigation');
+nav.append(compareButton);
 compareButton.onclick = () => {
   compare = !compare;
   render();
 };
 const exportButton = document.createElement('button');
 exportButton.textContent = 'Export measurements';
-required(document.querySelector('nav')).append(exportButton);
+nav.append(exportButton);
 exportButton.onclick = () => {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(metrics, null, 2)], { type: 'application/json' }),
@@ -156,10 +157,13 @@ function render() {
   if (compare) {
     referenceCanvas.width = width;
     referenceCanvas.height = innerHeight;
-    const ctx = required(referenceCanvas.getContext('2d'));
+    const ctx = required(
+      referenceCanvas.getContext('2d'),
+      'Failed to create concept comparison canvas',
+    );
     ctx.fillStyle = '#272923';
     ctx.fillRect(0, 0, width, innerHeight);
-    const source = at(references, orc ? 1 : 0);
+    const source = references[orc ? 1 : 0];
     const crop: [number, number, number, number] = orc
       ? view === 'rear'
         ? [1190, 128, 278, 453]
@@ -201,10 +205,17 @@ function render() {
     part.geometry.computeBoundingBox();
     if (isSkinnedMesh(part)) {
       part.computeBoundingBox();
-      bounds.union(required(part.boundingBox).clone().applyMatrix4(matrix));
-    } else bounds.union(required(part.geometry.boundingBox).clone().applyMatrix4(matrix));
+      bounds.union(
+        required(part.boundingBox, `Missing bounds for ${part.name}`).clone().applyMatrix4(matrix),
+      );
+    } else
+      bounds.union(
+        required(part.geometry.boundingBox, `Missing geometry bounds for ${part.name}`)
+          .clone()
+          .applyMatrix4(matrix),
+      );
   }
-  required(document.querySelector('#stats')).textContent =
+  required(document.querySelector('#stats'), 'Missing creature studio stats').textContent =
     `${renderer.info.render.triangles.toLocaleString()} triangles · ${renderer.info.render.calls} calls\nBounds ${bounds
       .getSize(new THREE.Vector3())
       .toArray()
@@ -222,7 +233,7 @@ function render() {
       part.getVertexPosition(i, position).applyMatrix4(matrix);
       position.toArray(world, i * 3);
     }
-    const indices = required(part.geometry.index);
+    const indices = required(part.geometry.index, `Missing triangle indices for ${part.name}`);
     // Intersect triangles with horizontal planes. Vertex-only bins miss the
     // silhouette where the decimator left long triangles on smooth surfaces.
     for (let t = 0; t < indices.count; t += 3) {
@@ -279,28 +290,37 @@ function render() {
 document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(
   (button) =>
     (button.onclick = () => {
-      view = required(button.dataset['view']);
+      view = required(button.dataset['view'], 'Missing creature studio view');
       render();
     }),
 );
-const creatureSelect = required(document.querySelector<HTMLSelectElement>('#id'));
+const creatureSelect = required(
+  document.querySelector<HTMLSelectElement>('#id'),
+  'Missing creature studio selector',
+);
 creatureSelect.onchange = () => {
   const id = creatureSelect.value;
   if (id !== 'orc' && id !== 'slime') throw new Error(`Unknown creature ${id}`);
   at(sim.enemies, 0).id = id;
   render();
 };
-required(document.querySelector<HTMLButtonElement>('#clay')).onclick = () => {
+required(
+  document.querySelector<HTMLButtonElement>('#clay'),
+  'Missing creature studio clay toggle',
+).onclick = () => {
   clay = !clay;
   materials.forEach((m) => {
-    m.map = clay ? null : required(original.get(m)).map;
+    m.map = clay ? null : required(original.get(m), 'Missing original creature material').map;
     m.vertexColors = !clay;
     m.color.set(clay ? '#a7a28e' : '#ffffff');
     m.needsUpdate = true;
   });
   render();
 };
-required(document.querySelector<HTMLButtonElement>('#wire')).onclick = () => {
+required(
+  document.querySelector<HTMLButtonElement>('#wire'),
+  'Missing creature studio wireframe toggle',
+).onclick = () => {
   materials.forEach((m) => {
     m.wireframe = !m.wireframe;
   });

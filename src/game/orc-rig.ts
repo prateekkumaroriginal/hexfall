@@ -2,6 +2,7 @@ import { isBone, isSkinnedMesh } from './three-types';
 import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { at, required } from '../lib/assert';
+import { ORC_ANIMATION } from '../config/rendering';
 
 type BoneBinding = { bone: THREE.Bone; parent: THREE.Object3D };
 export type OrcRig = {
@@ -45,7 +46,7 @@ export function validateOrcRig(root: THREE.Group): OrcRig {
     }),
     'Missing orc face with Blink, JawOpen and BrowTense poses',
   );
-  const dictionary = required(face.morphTargetDictionary);
+  const dictionary = required(face.morphTargetDictionary, 'Missing orc face pose dictionary');
   const influences = required(face.morphTargetInfluences, 'Missing orc pose influences');
   const expression = (name: string) => {
     const index = dictionary[name];
@@ -59,6 +60,7 @@ export function validateOrcRig(root: THREE.Group): OrcRig {
   const headIndex = face.skeleton.bones.findIndex((bone) => bone.name === 'head');
   const head = required(face.skeleton.bones[headIndex], 'Missing orc head bone');
   const headInverse = required(face.skeleton.boneInverses[headIndex], 'Missing orc head inverse');
+  if (!headInverse.elements.every(Number.isFinite)) throw new Error('Invalid orc head inverse');
   const metadata: Record<string, unknown> = face.userData;
   const landmarks = metadata['orc_eye_centers'];
   if (!Array.isArray(landmarks) || landmarks.length !== 6)
@@ -91,12 +93,25 @@ export function validateOrcRig(root: THREE.Group): OrcRig {
 }
 
 export function validateOrcAsset(asset: GLTF): OrcAsset {
-  const clip = (name: string) =>
-    required(
+  const clip = (name: keyof OrcAsset['clips']) => {
+    const animation = required(
       asset.animations.find((animation) => animation.name === name),
       `Missing orc ${name} animation`,
     );
+    if (!Number.isFinite(animation.duration) || animation.duration <= 0)
+      throw new Error(`Invalid orc ${name} animation duration`);
+    return animation;
+  };
   const clips = { Idle: clip('Idle'), Walk: clip('Walk'), Punch: clip('Punch') };
+  if (
+    clips.Punch.duration <=
+    Math.max(
+      ORC_ANIMATION.PUNCH_IMPACT_SECONDS,
+      ORC_ANIMATION.PUNCH_BLEND_IN_SECONDS,
+      ORC_ANIMATION.PUNCH_BLEND_OUT_SECONDS,
+    )
+  )
+    throw new Error('Orc Punch animation is too short for configured impact and blend times');
   validateOrcRig(asset.scene);
   return { scene: asset.scene, clips };
 }

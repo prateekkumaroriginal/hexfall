@@ -119,7 +119,7 @@ export function buildCreatureGeometries() {
     if (surface === 'ivory' || surface === 'dark') {
       const positions = Array.from(p.array),
         uv = Array.from(geometry.getAttribute('uv').array),
-        indices = Array.from(required(geometry.index).array);
+        indices = Array.from(required(geometry.index, 'Missing slime horn geometry indices').array);
       for (const end of [0, 1]) {
         const center = curve.getPointAt(end),
           target = curve.getTangentAt(end).multiplyScalar(end ? 1 : -1);

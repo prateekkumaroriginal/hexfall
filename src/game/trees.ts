@@ -315,7 +315,7 @@ function buildTree(seed: number, spread: number) {
     const end = new THREE.Vector3(Math.cos(a) * reach, y + 2.15, Math.sin(a) * reach);
     branch([new THREE.Vector3(0, y - 0.4, 0), fork, end], 0.24 - i * 0.018, 0.07, 7);
   }
-  const trunk = required(mergeGeometries(wood));
+  const trunk = required(mergeGeometries(wood), 'Failed to merge tree trunk geometry');
   const canopy = sculptCanopy(seed + 31, spread);
   for (const g of wood) g.dispose();
   trunk.computeBoundingSphere();
@@ -381,7 +381,10 @@ export class TreeRenderer {
       dummy.rotation.set(0, tree.yaw, 0);
       dummy.scale.set(tree.scaleX, tree.scaleY, tree.scaleZ);
       dummy.updateMatrix();
-      const bounds = required(at(this.batches, variant).canopy.geometry.boundingSphere).clone();
+      const bounds = required(
+        at(this.batches, variant).canopy.geometry.boundingSphere,
+        `Missing canopy bounds for tree variant ${variant}`,
+      ).clone();
       bounds.applyMatrix4(dummy.matrix);
       bounds.radius += 0.12;
       // Include the roots and lower trunk in the same conservative culling volume.

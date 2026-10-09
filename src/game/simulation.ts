@@ -240,7 +240,7 @@ export class Simulation {
       // Ellipsoid hit volumes match the broad orc and low slime silhouettes.
       const width = e.id === 'orc' ? 1 : slimeSpawnScale(e.spawnRemaining),
         height = e.id === 'orc' ? 1 : slimeSpawnScale(e.spawnRemaining, true);
-      const hitbox = (e.id === 'orc' ? ORC : SLIME).HITBOX_RADII_UNITS;
+      const hitbox = ENEMY_STATS[e.id].HITBOX_RADII_UNITS;
       const sx = hitbox.X * width,
         sy = hitbox.Y * height,
         sz = hitbox.Z * width;
@@ -380,7 +380,7 @@ export class Simulation {
   kill(e: Enemy) {
     e.active = false;
     this.kills++;
-    this.score += (e.id === 'orc' ? ORC : SLIME).KILL_SCORE;
+    this.score += ENEMY_STATS[e.id].KILL_SCORE;
     this.hp = Math.min(PLAYER.MAX_HEALTH, this.hp + PLAYER.HEALING_PER_KILL);
   }
   damage(amount: number) {
@@ -473,7 +473,7 @@ export class Simulation {
         dz = this.z - e.z,
         d = Math.hypot(dx, dz) || 1;
       e.cooldown = Math.max(0, e.cooldown - dt);
-      const stats = e.id === 'orc' ? ORC : SLIME;
+      const stats = ENEMY_STATS[e.id];
       const reach = stats.ATTACK_REACH_UNITS;
       if (e.windup > 0) {
         e.windup = Math.max(0, e.windup - dt);
@@ -536,7 +536,7 @@ export class Simulation {
           const dx = e.x - p.x,
             dz = e.z - p.z,
             d = Math.hypot(dx, dz);
-          const radius = p.radius + (e.id === 'orc' ? ORC : SLIME).COLLISION_RADIUS_UNITS;
+          const radius = p.radius + ENEMY_STATS[e.id].COLLISION_RADIUS_UNITS;
           if (d < radius) {
             const inward = Math.hypot(p.x, p.z) || 1;
             e.x = p.x + (d ? dx / d : -p.x / inward) * radius;

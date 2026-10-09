@@ -160,7 +160,7 @@ export function buildStaff(group: THREE.Group) {
     ]);
   }
   for (const [material, geometries] of parts) {
-    const merged = required(mergeGeometries(geometries));
+    const merged = required(mergeGeometries(geometries), 'Failed to merge staff geometry');
     for (const g of geometries) g.dispose();
     group.add(new THREE.Mesh(merged, material));
   }

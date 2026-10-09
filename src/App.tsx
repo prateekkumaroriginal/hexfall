@@ -86,7 +86,7 @@ export default function App() {
   );
   useEffect(() => {
     let cancelled = false;
-    const element = required(host.current);
+    const element = required(host.current, 'Missing game canvas host');
     const onError = (event: Event) => setError((event as CustomEvent<string>).detail);
     element.addEventListener('engine-error', onError);
     import('./game/engine')

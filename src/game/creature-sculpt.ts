@@ -29,12 +29,12 @@ export function sculptedGeometry(name: keyof typeof data) {
   {
     // Split every cylindrical UV seam so skin planes and bubble paint cannot
     // stretch across the back-facing triangles of the sculptures.
-    const indices = Array.from(required(geometry.index).array);
+    const indices = Array.from(required(geometry.index, `Missing ${name} sculpt indices`).array);
     const attributes = Object.fromEntries(
       Object.entries(geometry.attributes).map(([key, value]) => [key, Array.from(value.array)]),
     );
-    const seamPositions = required(attributes['position']);
-    const seamUv = required(attributes['uv']);
+    const seamPositions = required(attributes['position'], `Missing ${name} sculpt positions`);
+    const seamUv = required(attributes['uv'], `Missing ${name} sculpt UVs`);
     const duplicates = new Map<number, number>();
     for (let triangle = 0; triangle < indices.length; triangle += 3) {
       const face = indices.slice(triangle, triangle + 3);
@@ -46,7 +46,7 @@ export function sculptedGeometry(name: keyof typeof data) {
         if (duplicate === undefined) {
           duplicate = seamPositions.length / 3;
           for (const [key, attribute] of Object.entries(geometry.attributes)) {
-            const values = required(attributes[key]);
+            const values = required(attributes[key], `Missing ${name} sculpt attribute ${key}`);
             for (let c = 0; c < attribute.itemSize; c++)
               values.push(at(attribute.array, index * attribute.itemSize + c));
           }
@@ -57,7 +57,7 @@ export function sculptedGeometry(name: keyof typeof data) {
       });
     }
     for (const [key, attribute] of Object.entries(geometry.attributes)) {
-      const values = required(attributes[key]);
+      const values = required(attributes[key], `Missing ${name} sculpt attribute ${key}`);
       geometry.setAttribute(
         key,
         key === 'sculptShade'

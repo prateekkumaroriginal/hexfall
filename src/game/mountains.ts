@@ -211,7 +211,7 @@ function buildOutcrops() {
     geometry.computeVertexNormals();
     parts.push(geometry);
   }
-  const geometry = required(mergeGeometries(parts));
+  const geometry = required(mergeGeometries(parts), 'Failed to merge mountain outcrop geometry');
   for (const part of parts) part.dispose();
   return geometry;
 }
@@ -219,7 +219,10 @@ export function buildMountains(scene: THREE.Scene) {
   const cliffs = buildRidge(CLIFF_PROFILE, 192, false);
   const summits = buildRidge(SUMMIT_PROFILE, 160, true);
   const outcrops = buildOutcrops();
-  const geometry = required(mergeGeometries([cliffs, summits, outcrops]));
+  const geometry = required(
+    mergeGeometries([cliffs, summits, outcrops]),
+    'Failed to merge mountain geometry',
+  );
   cliffs.dispose();
   summits.dispose();
   outcrops.dispose();

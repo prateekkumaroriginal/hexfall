@@ -36,6 +36,16 @@ The first wave starts with one slime and one orc. Later waves bring larger crowd
 
 Switching tabs or leaving the game window pauses the action. Click **RESUME** when you're ready to continue.
 
+## Photo mode
+
+Pause a run and choose **PHOTO MODE** to freeze the arena and frame a shot. Mouse look works like gameplay: move the mouse or trackpad to turn the camera. Press Tab to release the cursor and use the controls; click the scene to return to mouse look. WASD moves the camera, Q/E lowers or raises it, and Shift moves faster. The wizard stays in place.
+
+Adjust field of view and height, toggle a thirds grid or the staff, or reset the camera to its entry view. **Hide controls** or H clears the interface and returns to mouse look. H shows the controls and releases the cursor again. **Capture** or Enter downloads the scene without the interface or grid, at up to 1920 × 1080 while preserving the window's aspect ratio. The confirmation disappears after three seconds. Photo settings do not change your gameplay settings.
+
+Press Escape or click **Back to pause** to restore the gameplay view. Click **RESUME** to continue the same run.
+
+Photo camera and session lifecycle tests run with `pnpm test`. Run `pnpm test:browser:photo` to build the app and check the photo flow against a temporary production preview. The check uses Edge on Windows and Playwright Chromium elsewhere. Install Chromium with `pnpm exec playwright install chromium` if needed. To check an already running server, set `PHOTO_MODE_TEST_URL` before running `node scripts/photo-mode-check.mjs`.
+
 ## Settings
 
 Open **SETTINGS** from the main menu or pause screen to adjust:

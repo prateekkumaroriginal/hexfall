@@ -62,6 +62,8 @@ describe('combat simulation', () => {
       b = new Simulation();
     a.reset();
     b.reset();
+    // Test movement without random enemy spawns influencing player separation.
+    a.waveWait = b.waveWait = 1000;
     advance(a, 0.5, { ...blankInput(), forward: 1 });
     advance(b, 0.5, { ...blankInput(), forward: 1, strafe: 1 });
     expect(Math.hypot(b.x, b.z - 9)).toBeCloseTo(Math.hypot(a.x, a.z - 9));

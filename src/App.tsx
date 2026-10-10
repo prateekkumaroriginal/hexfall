@@ -16,6 +16,8 @@ import type { Snapshot } from './game/simulation';
 import { Button } from './components/ui/button';
 import { PanelContent, PanelOverlay, PanelTitle } from './components/ui/panel';
 import { cn } from './lib/utils';
+import { PhotoMode } from './PhotoMode';
+import type { PhotoSnapshot } from './game/photo-mode';
 const initial: Snapshot = {
   phase: 'ready',
   hp: PLAYER.MAX_HEALTH,
@@ -46,6 +48,8 @@ export default function App() {
   const host = useRef<HTMLDivElement>(null),
     engine = useRef<Engine | null>(null);
   const [snapshot, setSnapshot] = useState(initial);
+  const [photo, setPhoto] = useState<PhotoSnapshot | null>(null);
+  const resumeButton = useRef<HTMLButtonElement>(null);
   const [settings, setSettings] = useState(loadSettings);
   const initialSettings = useRef(settings);
   const [panel, setPanel] = useState<'none' | 'settings' | 'guide' | 'status'>('none');
@@ -87,7 +91,10 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const element = required(host.current, 'Missing game canvas host');
-    const onError = (event: Event) => setError((event as CustomEvent<string>).detail);
+    const onError = (event: Event) => {
+      engine.current?.exitPhotoMode();
+      setError((event as CustomEvent<string>).detail);
+    };
     element.addEventListener('engine-error', onError);
     import('./game/engine')
       .then(({ Engine }) => {
@@ -98,6 +105,7 @@ export default function App() {
             setSnapshot,
             updatePerformance,
             initialSettings.current,
+            setPhoto,
           );
           setReady(true);
         } catch {
@@ -125,6 +133,12 @@ export default function App() {
       /* Private browsers may disable storage. */
     }
   }, [settings]);
+  const inPhotoMode = photo !== null;
+  useEffect(() => {
+    if (snapshot.phase === 'paused' && !inPhotoMode && panel === 'none') {
+      resumeButton.current?.focus();
+    }
+  }, [snapshot.phase, inPhotoMode, panel]);
   const start = async () => {
     setError('');
     setPanel('none');
@@ -147,10 +161,12 @@ export default function App() {
         }
         ref={host}
       />
-      <div
-        className="vignette pointer-events-none absolute inset-0 size-full"
-        data-playing={playing}
-      />
+      {photo === null ? (
+        <div
+          className="vignette pointer-events-none absolute inset-0 size-full"
+          data-playing={playing}
+        />
+      ) : null}
       {snapshot.hurt > 0 && playing ? (
         <div
           className="pointer-events-none absolute inset-0 z-2 size-full shadow-[inset_0_0_180px_45px_#b43222]"
@@ -250,7 +266,11 @@ export default function App() {
         </>
       ) : null}
 
-      {!menu && !playing && panel === 'none' ? (
+      {photo !== null && engine.current ? (
+        <PhotoMode engine={engine.current} snapshot={photo} />
+      ) : null}
+
+      {!menu && !playing && photo === null && panel === 'none' ? (
         <PanelOverlay>
           <PanelContent className="text-center">
             <PanelTitle>
@@ -278,9 +298,14 @@ export default function App() {
                 </div>
               </div>
             ) : null}
-            <Button className="mt-7" onClick={() => void start()}>
+            <Button ref={resumeButton} className="mt-7" onClick={() => void start()}>
               {ended ? 'PLAY AGAIN' : 'RESUME'}
             </Button>
+            {snapshot.phase === 'paused' ? (
+              <Button variant="secondary" onClick={() => engine.current?.enterPhotoMode()}>
+                PHOTO MODE
+              </Button>
+            ) : null}
             <Button variant="secondary" onClick={() => setPanel('settings')}>
               SETTINGS
             </Button>
@@ -487,14 +512,16 @@ export default function App() {
           </button>
         </div>
       ) : null}
-      <div
-        className={
-          'pointer-events-none absolute bottom-[14px] left-[4.5%] flex items-center gap-2' +
-          ' text-[7px] font-medium tracking-[1px] text-[#a3b595] compact:left-[7%]'
-        }
-      >
-        {perf.fps ? `${perf.fps} FPS` : ''}
-      </div>
+      {photo === null ? (
+        <div
+          className={
+            'pointer-events-none absolute bottom-[14px] left-[4.5%] flex items-center gap-2' +
+            ' text-[7px] font-medium tracking-[1px] text-[#a3b595] compact:left-[7%]'
+          }
+        >
+          {perf.fps ? `${perf.fps} FPS` : ''}
+        </div>
+      ) : null}
     </main>
   );
 }

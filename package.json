@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
+    "test:browser:photo": "pnpm build && node scripts/photo-mode-check.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "lint": "eslint .",
     "format": "prettier --write src scripts \"*.{js,ts,json,html}\"",

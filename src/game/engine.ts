@@ -14,8 +14,12 @@ import { renderPixelRatio } from './performance';
 import { FrameDiagnostics } from './diagnostics';
 import { verticalFieldOfView } from './camera';
 import type { Settings } from '../settings';
+import { PhotoSession } from './photo-session';
+import { PointerLockController } from './pointer-lock';
+import { capturePhotoFrame, downloadPhoto } from './photo-capture';
+import type { PhotoControls, PhotoModeActions, PhotoSnapshot } from './photo-mode';
 
-export class Engine {
+export class Engine implements PhotoModeActions {
   readonly sim = new Simulation();
   readonly input = blankInput();
   private renderer: THREE.WebGLRenderer;
@@ -45,6 +49,9 @@ export class Engine {
   private staffView = new THREE.Group();
   private crystal: ReturnType<typeof buildStaff>;
   private mouseFire = false;
+  private photo: PhotoSession | null = null;
+  private pointerLock: PointerLockController;
+  private gameplayPointerOwner = {};
   private audio?: AudioContext;
   private lastShot = 0;
   private settings: Settings;
@@ -65,6 +72,7 @@ export class Engine {
     private onUpdate: (s: Snapshot) => void,
     private onPerformance: (fps: number, calls: number) => void,
     settings: Settings,
+    private onPhotoUpdate: (snapshot: PhotoSnapshot | null) => void = () => {},
   ) {
     this.settings = settings;
     this.renderer = new THREE.WebGLRenderer({
@@ -79,6 +87,21 @@ export class Engine {
     this.renderer.domElement.setAttribute(
       'aria-label',
       'First-person view of a grassy mountain clearing',
+    );
+    this.renderer.domElement.tabIndex = 0;
+    this.renderer.domElement.classList.add('game-canvas');
+    this.pointerLock = new PointerLockController(
+      {
+        request: () => this.renderer.domElement.requestPointerLock(),
+        release: () => document.exitPointerLock(),
+        isLocked: () => document.pointerLockElement === this.renderer.domElement,
+        focus: () => this.renderer.domElement.focus({ preventScroll: true }),
+      },
+      (owner, locked) => {
+        if (this.disposed) return;
+        if (owner === this.photo) this.photo?.pointerLockChanged(locked);
+        else if (owner === this.gameplayPointerOwner && !locked) this.pause();
+      },
     );
     this.scene.fog = new THREE.Fog('#adcad6', 65, 230);
     this.scene.add(new THREE.HemisphereLight('#d3ebff', '#627344', 2.0));
@@ -204,21 +227,73 @@ export class Engine {
     this.camera.aspect = w / h;
     this.camera.fov = verticalFieldOfView(this.settings.fieldOfView, this.camera.aspect);
     this.camera.updateProjectionMatrix();
+    this.photo?.resize(this.camera.aspect);
+    this.updateStaffScale(this.photo?.camera ?? this.camera);
+  };
+  private updateStaffScale(camera: THREE.PerspectiveCamera) {
     // Preserve the staff's screen size and position as the world FOV changes.
     const staffScale =
-      Math.tan((this.camera.fov * Math.PI) / 360) /
+      Math.tan((camera.fov * Math.PI) / 360) /
       Math.tan((CAMERA.STAFF_REFERENCE_VERTICAL_FOV_DEGREES * Math.PI) / 360);
     this.staffView.scale.set(staffScale, staffScale, 1);
-  };
+  }
+  enterPhotoMode() {
+    if (this.disposed || this.sim.phase !== 'paused' || this.photo) return;
+    this.photo = new PhotoSession(this.camera, this.pointerLock, {
+      onUpdate: (snapshot) => {
+        this.staff.visible = snapshot?.showStaff ?? true;
+        this.onPhotoUpdate(snapshot);
+      },
+      onExit: () => this.exitPhotoMode(),
+      onCameraChange: (camera) => this.updateStaffScale(camera),
+      capture: (camera) =>
+        capturePhotoFrame(this.renderer, camera, () => this.renderScene(camera), this.resize),
+      download: downloadPhoto,
+    });
+    this.keys.clear();
+    this.mouseFire = false;
+    this.input.fire = false;
+    this.scene.add(this.photo.camera);
+    this.photo.camera.add(this.staffView);
+    this.staff.visible = false;
+    this.updateStaffScale(this.photo.camera);
+    this.renderer.domElement.setAttribute('aria-label', 'Photo camera view of the frozen arena');
+    this.renderer.domElement.focus({ preventScroll: true });
+    this.photo.enter();
+  }
+  exitPhotoMode() {
+    const photo = this.photo;
+    if (!photo) return;
+    this.camera.add(this.staffView);
+    this.scene.remove(photo.camera);
+    this.photo = null;
+    this.keys.clear();
+    photo.close();
+    this.staff.visible = true;
+    this.updateStaffScale(this.camera);
+    this.renderer.domElement.setAttribute(
+      'aria-label',
+      'First-person view of a grassy mountain clearing',
+    );
+  }
+  async enablePhotoMouseLook() {
+    await this.photo?.enableMouseLook();
+  }
+  updatePhotoControls(controls: Partial<PhotoControls>) {
+    this.photo?.updateControls(controls);
+  }
+  resetPhotoCamera() {
+    this.photo?.resetCamera();
+  }
+  async capturePhoto() {
+    await this.photo?.capture();
+  }
   async start() {
     if (this.disposed) return;
+    this.exitPhotoMode();
     try {
-      await this.renderer.domElement.requestPointerLock();
-      if (this.disposed) {
-        document.exitPointerLock();
-        return;
-      }
-      if (document.pointerLockElement !== this.renderer.domElement) return;
+      const locked = await this.pointerLock.request(this.gameplayPointerOwner);
+      if (this.disposed || !locked) return;
       if (this.sim.phase !== 'paused') {
         this.sim.reset();
         this.input.yaw = 0;
@@ -232,37 +307,44 @@ export class Engine {
         void this.audio.resume().catch(() => {});
       }
       this.onUpdate(this.sim.snapshot());
-    } catch {
+    } catch (error) {
       throw new Error(
         'Mouse capture was blocked. Click PLAY again, or open the game in a desktop browser.',
+        { cause: error },
       );
     }
   }
   exitToMenu() {
+    this.exitPhotoMode();
     this.sim.reset();
     this.sim.phase = 'ready';
     this.keys.clear();
     this.mouseFire = false;
     assign(this.input, blankInput());
     this.accumulator = 0;
-    if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock();
+    this.pointerLock.release(this.gameplayPointerOwner);
     this.onUpdate(this.sim.snapshot());
   }
   pause = () => {
+    this.keys.clear();
+    if (this.photo) {
+      this.photo.releaseCursor();
+      return;
+    }
     if (this.sim.phase === 'playing') {
       this.sim.phase = 'paused';
-      this.keys.clear();
       this.mouseFire = false;
       this.input.fire = false;
-      if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock();
+      this.pointerLock.release(this.gameplayPointerOwner);
       this.onUpdate(this.sim.snapshot());
-    }
+    } else this.pointerLock.release(this.gameplayPointerOwner);
   };
   private visibility = () => {
     if (document.hidden) this.pause();
   };
   private contextLost = (e: Event) => {
     e.preventDefault();
+    this.exitPhotoMode();
     this.pause();
     this.host.dispatchEvent(
       new CustomEvent('engine-error', {
@@ -271,9 +353,14 @@ export class Engine {
     );
   };
   private lockChange = () => {
-    if (document.pointerLockElement !== this.renderer.domElement) this.pause();
+    this.pointerLock.handleChange();
   };
   private mouseMove = (e: MouseEvent) => {
+    if (this.photo) {
+      const sensitivity = AIM_SETTINGS.RADIANS_PER_MOUSE_PIXEL * this.settings.sensitivity;
+      this.photo.look(e.movementX * sensitivity, e.movementY * sensitivity);
+      return;
+    }
     if (this.sim.phase !== 'playing') return;
     this.input.yaw -=
       e.movementX * AIM_SETTINGS.RADIANS_PER_MOUSE_PIXEL * this.settings.sensitivity;
@@ -285,6 +372,10 @@ export class Engine {
     );
   };
   private keyDown = (e: KeyboardEvent) => {
+    if (this.photo) {
+      this.photo.keyDown(e);
+      return;
+    }
     if (this.sim.phase !== 'playing') return;
     if (['ControlLeft', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code))
       e.preventDefault();
@@ -293,8 +384,16 @@ export class Engine {
   };
   private keyUp = (e: KeyboardEvent) => {
     this.keys.delete(e.code);
+    this.photo?.keyUp(e.code);
   };
   private mouseDown = (e: MouseEvent) => {
+    if (this.photo) {
+      if (e.button === 0 && e.target === this.renderer.domElement) {
+        e.preventDefault();
+        void this.enablePhotoMouseLook();
+      }
+      return;
+    }
     if (this.sim.phase === 'playing' && e.button === 0) this.mouseFire = true;
   };
   private mouseUp = (e: MouseEvent) => {
@@ -329,7 +428,9 @@ export class Engine {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.tick);
     const renderHz =
-      this.sim.phase === 'playing' ? RUNTIME.GAMEPLAY_RENDER_HZ : RUNTIME.MENU_RENDER_HZ;
+      this.sim.phase === 'playing' || this.photo
+        ? RUNTIME.GAMEPLAY_RENDER_HZ
+        : RUNTIME.MENU_RENDER_HZ;
     if (now - this.last < 1000 / renderHz - RUNTIME.FRAME_SCHEDULING_TOLERANCE_MILLISECONDS) return;
     const elapsed = (now - (this.last || now)) / 1000;
     const dt = Math.min(elapsed, RUNTIME.MAXIMUM_FRAME_DELTA_SECONDS);
@@ -337,6 +438,7 @@ export class Engine {
     if (document.hidden) return;
     const frameStart = performance.now(),
       wasPlaying = this.sim.phase === 'playing';
+    this.photo?.step(dt);
     if (this.sim.phase === 'playing') {
       this.input.forward =
         Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) -
@@ -365,7 +467,7 @@ export class Engine {
       );
       this.camera.rotation.set(this.input.pitch, this.input.yaw, 0, 'YXZ');
       if (this.sim.phase !== 'playing') {
-        document.exitPointerLock();
+        this.pointerLock.release(this.gameplayPointerOwner);
         this.keys.clear();
         this.mouseFire = false;
         this.input.fire = false;
@@ -376,20 +478,19 @@ export class Engine {
       this.camera.position.set(3 + Math.sin(this.previewTime * 0.08) * 1.5, 3.5, 14);
       this.camera.lookAt(-3, 2, -7);
     }
-    this.staff.visible = this.sim.phase !== 'ready';
-    this.staff.position.y =
-      -0.86 +
-      Math.sin(this.sim.time * 3) * 0.015 +
-      (this.input.fire && this.sim.shootCooldown > 0.08 ? -0.035 : 0);
-    this.crystal.rotation.y += dt;
-    this.crystal.material.emissiveIntensity =
-      this.input.fire && this.sim.phase === 'playing' && this.sim.shootCooldown > 0.07 ? 2.4 : 0.6;
-    this.environment.update(
-      this.sim.phase === 'ready' ? this.previewTime : this.sim.time,
-      this.camera,
-    );
-    this.syncMeshes();
-    this.renderer.render(this.scene, this.camera);
+    this.staff.visible = this.sim.phase !== 'ready' && (!this.photo || this.photo.showStaff);
+    if (!this.photo) {
+      this.staff.position.y =
+        -0.86 +
+        Math.sin(this.sim.time * 3) * 0.015 +
+        (this.input.fire && this.sim.shootCooldown > 0.08 ? -0.035 : 0);
+      this.crystal.rotation.y += dt;
+      this.crystal.material.emissiveIntensity =
+        this.input.fire && this.sim.phase === 'playing' && this.sim.shootCooldown > 0.07
+          ? 2.4
+          : 0.6;
+    }
+    this.renderScene(this.photo?.camera ?? this.camera);
     if (wasPlaying) {
       this.diagnostics.record(elapsed * 1000, performance.now() - frameStart);
       const render = this.lastGameplayRender;
@@ -403,6 +504,7 @@ export class Engine {
     this.hudTime += dt;
     if (this.hudTime > RUNTIME.HUD_INTERVAL_SECONDS) {
       if (this.sim.phase === 'playing') this.onUpdate(this.sim.snapshot());
+      this.photo?.flushSnapshot();
       this.hudTime = 0;
     }
     this.fpsFrames++;
@@ -415,8 +517,13 @@ export class Engine {
       this.fpsTime = this.fpsFrames = 0;
     }
   };
-  private syncMeshes() {
-    this.creatures.update(this.sim.enemies, this.sim.time, this.sim.x, this.sim.z, this.camera);
+  private renderScene(camera: THREE.PerspectiveCamera) {
+    this.environment.update(this.sim.phase === 'ready' ? this.previewTime : this.sim.time, camera);
+    this.syncMeshes(camera);
+    this.renderer.render(this.scene, camera);
+  }
+  private syncMeshes(camera: THREE.Camera = this.camera) {
+    this.creatures.update(this.sim.enemies, this.sim.time, this.sim.x, this.sim.z, camera);
     let count = 0;
     for (const p of this.sim.projectiles)
       if (p.active) {
@@ -436,12 +543,13 @@ export class Engine {
     this.trails.instanceMatrix.needsUpdate = true;
   }
   dispose() {
+    this.exitPhotoMode();
     this.disposed = true;
+    this.pointerLock.dispose();
     this.creatures.dispose();
     cancelAnimationFrame(this.frame);
     this.abort.abort();
     this.resizeObserver.disconnect();
-    if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock();
     void this.audio?.close().catch(() => {});
     const geometries = new Set<THREE.BufferGeometry>(),
       materials = new Set<THREE.Material>();

@@ -1,47 +1,45 @@
 import { required, at } from '../lib/assert';
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TreeRenderer } from './trees';
 import { BOULDERS, ENVIRONMENT_SEED } from '../config/world';
 import { GRASS, QUALITY_PRESETS } from '../config/rendering';
 import type { Quality } from './performance';
 import { buildMountains } from './mountains';
+import { createMountainMaterial, loadMountainRockTextures } from './mountain-material';
 function randomSource(seed: number) {
   return () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
     return (seed >>> 0) / 4294967296;
   };
 }
-function paintTexture(kind: 'grass' | 'ground' | 'rock', random: () => number) {
+function paintTexture(kind: 'grass' | 'ground', random: () => number) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 256;
   const ctx = required(canvas.getContext('2d'), `Failed to create ${kind} texture canvas`);
-  if (kind === 'ground' || kind === 'rock') {
+  if (kind === 'ground') {
     const data = ctx.createImageData(256, 256);
     for (let y = 0; y < 256; y++)
       for (let x = 0; x < 256; x++) {
         const noise =
           Math.sin(x * 0.13 + Math.sin(y * 0.07) * 2) * Math.cos(y * 0.09) * 0.5 + random() * 0.5;
         const i = (y * 256 + x) * 4;
-        const base = kind === 'rock' ? [135, 140, 133] : [66, 85, 43];
-        for (let c = 0; c < 3; c++)
-          data.data[i + c] = at(base, c) + noise * (kind === 'rock' ? 30 : 22);
+        const base = [66, 85, 43];
+        for (let c = 0; c < 3; c++) data.data[i + c] = at(base, c) + noise * 22;
         data.data[i + 3] = 255;
       }
     ctx.putImageData(data, 0, 0);
-    for (let i = 0; i < (kind === 'rock' ? 260 : 6500); i++) {
+    for (let i = 0; i < 6500; i++) {
       const x = random() * 256,
         y = random() * 256;
-      ctx.strokeStyle =
-        kind === 'rock'
-          ? 'rgba(42,48,42,.2)'
-          : `rgba(${70 + random() * 50},${95 + random() * 50},${35 + random() * 30},.55)`;
-      ctx.lineWidth = kind === 'rock' ? 0.5 : 1;
+      ctx.strokeStyle = `rgba(${70 + random() * 50},${95 + random() * 50},${35 + random() * 30},.55)`;
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(x + random() * 5 - 2, y - (kind === 'rock' ? random() * 35 : random() * 9));
+      ctx.lineTo(x + random() * 5 - 2, y - random() * 9);
       ctx.stroke();
     }
-  } else if (kind === 'grass') {
+  } else {
     for (let i = 0; i < 24; i++) {
       const x = 15 + random() * 225,
         tipX = x + (random() - 0.5) * 65,
@@ -60,7 +58,7 @@ function paintTexture(kind: 'grass' | 'ground' | 'rock', random: () => number) {
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  if (kind === 'ground' || kind === 'rock') {
+  if (kind === 'ground') {
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   }
   return texture;
@@ -143,9 +141,10 @@ export class Environment {
     this.sky = sky;
     scene.add(sky);
     const groundMap = paintTexture('ground', random),
-      grassMap = paintTexture('grass', random),
-      rockMap = paintTexture('rock', random);
-    this.textures.push(groundMap, grassMap, rockMap);
+      grassMap = paintTexture('grass', random);
+    this.textures.push(groundMap, grassMap);
+    const mountainRock = loadMountainRockTextures();
+    this.textures.push(mountainRock.color, mountainRock.normal, mountainRock.surface);
     groundMap.repeat.set(20, 24);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(40, 48, 1, 1).rotateX(-Math.PI / 2),
@@ -221,7 +220,7 @@ export class Environment {
         this.grassTiles.push({ mesh, x: cx, z: cz });
       }
     this.trees = new TreeRenderer(scene);
-    const rockGeo = new THREE.IcosahedronGeometry(1, 2);
+    const rockGeo = new THREE.IcosahedronGeometry(1, 3);
     const rp = rockGeo.getAttribute('position'),
       rc = [];
     for (let i = 0; i < rp.count; i++) {
@@ -240,15 +239,13 @@ export class Environment {
       rc.push(color.r, color.g, color.b);
     }
     rockGeo.setAttribute('color', new THREE.Float32BufferAttribute(rc, 3));
-    rockGeo.computeVertexNormals();
-    const rockMat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 1,
-      flatShading: true,
-      bumpMap: rockMap,
-      bumpScale: 0.12,
-    });
-    const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 46);
+    rockGeo.deleteAttribute('uv');
+    rockGeo.deleteAttribute('normal');
+    const smoothRock = mergeVertices(rockGeo);
+    rockGeo.dispose();
+    smoothRock.computeVertexNormals();
+    const rockMat = createMountainMaterial(mountainRock);
+    const rocks = new THREE.InstancedMesh(smoothRock, rockMat, 46);
     rocks.name = 'valley-boulders';
     let rockCount = 0;
     for (const p of BOULDERS.LAYOUT) {
@@ -272,7 +269,7 @@ export class Environment {
     }
     rocks.computeBoundingSphere();
     scene.add(rocks);
-    buildMountains(scene);
+    buildMountains(scene, mountainRock);
   }
   bakeSky(renderer: THREE.WebGLRenderer) {
     const parent = required(this.sky.parent, 'Sky must be attached before baking'),

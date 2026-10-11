@@ -22,7 +22,21 @@ it('encloses every approach without placing mountain geometry inside the arena',
     }
     mountains.geometry.computeBoundingBox();
     expect(required(mountains.geometry.boundingBox).max.y).toBeGreaterThan(40);
-    expect(positions.count / 3).toBeLessThan(15000);
+    const triangles = (mountains.geometry.index?.count ?? positions.count) / 3;
+    expect(triangles).toBeLessThan(40000);
+    // Coincident vertices must share their lighting, including ring seams and rock edges.
+    const normals = mountains.geometry.getAttribute('normal');
+    const sharedNormals = new Map<string, THREE.Vector3>();
+    const normal = new THREE.Vector3();
+    for (let i = 0; i < positions.count; i++) {
+      const key = [positions.getX(i), positions.getY(i), positions.getZ(i)]
+        .map((value) => Math.round(value * 10000))
+        .join(',');
+      normal.fromBufferAttribute(normals, i);
+      const previous = sharedNormals.get(key);
+      if (previous) expect(normal.dot(previous)).toBeGreaterThan(0.999);
+      else sharedNormals.set(key, normal.clone());
+    }
     mountains.updateMatrixWorld();
     const raycaster = new THREE.Raycaster();
     for (let i = 0; i < 72; i++) {

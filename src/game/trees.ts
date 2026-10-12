@@ -19,8 +19,7 @@ function buildTree(seed: number, spread: number) {
   const positions: number[] = [],
     uv: number[] = [],
     colors: number[] = [],
-    indices: number[] = [],
-    flex: number[] = [];
+    indices: number[] = [];
   const up = new THREE.Vector3(0, 1, 0);
   const tint = new THREE.Color();
   const branch = (
@@ -108,7 +107,6 @@ function buildTree(seed: number, spread: number) {
         positions.push(p.x, p.y, p.z);
         uv.push(((tile % 4) + u) / 4, 1 - (Math.floor(tile / 4) + 1 - v) / 2);
         colors.push(shade * (0.92 + random() * 0.06), shade, shade * 0.89);
-        flex.push(u);
       }
     }
     indices.push(first, first + 1, first + 2, first + 1, first + 3, first + 2);
@@ -215,7 +213,6 @@ function buildTree(seed: number, spread: number) {
   canopy.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   canopy.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   canopy.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  canopy.setAttribute('leafFlex', new THREE.Float32BufferAttribute(flex, 1));
   canopy.setIndex(indices);
   canopy.computeVertexNormals();
   trunk.computeBoundingSphere();
@@ -231,9 +228,8 @@ export class TreeRenderer {
     bounds: THREE.Sphere;
     variant: number;
   }[] = [];
-  private wind = { value: 0 };
   constructor(scene: THREE.Scene, textures?: TreeTextures) {
-    const { bark, foliage } = createTreeMaterials(this.wind, textures);
+    const { bark, foliage } = createTreeMaterials(textures);
     const dummy = new THREE.Object3D();
     for (const [i, variant] of TREES.VARIANTS.entries()) {
       const geometry = buildTree(variant.SEED, variant.SPREAD);
@@ -270,8 +266,7 @@ export class TreeRenderer {
       });
     }
   }
-  update(time: number, frustum: THREE.Frustum) {
-    this.wind.value = time;
+  update(frustum: THREE.Frustum) {
     for (const { trunk, canopy } of this.batches) trunk.count = canopy.count = 0;
     for (const tree of this.trees) {
       if (!frustum.intersectsSphere(tree.bounds)) continue;

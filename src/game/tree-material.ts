@@ -38,7 +38,7 @@ export function loadTreeTextures(manager?: THREE.LoadingManager): TreeTextures {
   };
 }
 
-export function createTreeMaterials(wind: { value: number }, textures?: TreeTextures) {
+export function createTreeMaterials(textures?: TreeTextures) {
   const bark = new THREE.MeshStandardMaterial({
     roughness: 1,
     vertexColors: true,
@@ -70,23 +70,8 @@ export function createTreeMaterials(wind: { value: number }, textures?: TreeText
   ] as const) {
     material.onBeforeCompile = (shader) => {
       if (!leaves && textures) reusePackedSurfaceSample(shader);
-      shader.uniforms['treeTime'] = wind;
-      shader.vertexShader =
-        `uniform float treeTime;\n${leaves ? 'attribute float leafFlex;\nvarying vec3 leafWorldNormal;\n' : ''}` +
-        shader.vertexShader;
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `
-        #include <begin_vertex>
-        vec3 treeOrigin = instanceMatrix[3].xyz;
-        float phase = treeTime * 1.15 + treeOrigin.x * .7 + treeOrigin.z * .4;
-        float bend = smoothstep(2.3, 7.5, position.y);
-        transformed.x += sin(phase) * bend * .05;
-        transformed.z += cos(phase * .8) * bend * .03;
-        ${leaves ? 'transformed.y += sin(treeTime * 2.4 + position.x * 4.1 + position.z * 3.3 + phase) * leafFlex * .012;' : ''}
-      `,
-      );
       if (leaves) {
+        shader.vertexShader = 'varying vec3 leafWorldNormal;\n' + shader.vertexShader;
         shader.vertexShader = shader.vertexShader.replace(
           '#include <defaultnormal_vertex>',
           '#include <defaultnormal_vertex>\nleafWorldNormal = inverseTransformDirection(transformedNormal, viewMatrix);',
@@ -104,7 +89,7 @@ export function createTreeMaterials(wind: { value: number }, textures?: TreeText
       }
     };
     material.customProgramCacheKey = () =>
-      leaves ? 'photographic-leaves-v1' : 'photographic-bark-v2';
+      leaves ? 'photographic-leaves-v2' : 'photographic-bark-v3';
   }
   return { bark, foliage };
 }

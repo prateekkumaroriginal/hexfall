@@ -34,7 +34,6 @@ it('renders a fourth configured tree variant and a larger tree count', async () 
     camera.lookAt(0, 3, 0);
     camera.updateMatrixWorld();
     renderer.update(
-      0,
       new THREE.Frustum().setFromProjectionMatrix(
         new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
       ),

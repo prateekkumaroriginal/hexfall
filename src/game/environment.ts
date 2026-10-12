@@ -85,7 +85,6 @@ export class Environment {
   private textures: THREE.Texture[] = [];
   private sky: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private skyTarget?: THREE.WebGLCubeRenderTarget;
-  private wind = { value: 0 };
   private skyTime = { value: 0 };
   private disposed = false;
   constructor(scene: THREE.Scene) {
@@ -189,16 +188,14 @@ export class Environment {
     blade.setIndex(indices);
     const grassMat = new THREE.ShaderMaterial({
       side: THREE.DoubleSide,
-      uniforms: { time: this.wind, atlas: { value: grassMap } },
+      uniforms: { atlas: { value: grassMap } },
       vertexShader: `
-        uniform float time;
         varying vec2 vUv;
         varying float shade;
         void main() {
           vUv=uv;
           vec4 p=modelMatrix*instanceMatrix*vec4(position,1.0);
           shade=.85+.15*sin(p.x*.57+p.z*.37);
-          p.x+=sin(p.x*.4+p.z*.3+time*1.7)*uv.y*uv.y*.065;
           gl_Position=projectionMatrix*viewMatrix*p;
         }
       `,
@@ -318,7 +315,6 @@ export class Environment {
     this.grassRadius = QUALITY_PRESETS[quality].GRASS_RADIUS_UNITS;
   }
   update(time: number, camera: THREE.Camera) {
-    this.wind.value = time;
     this.sky.rotation.y = time * 0.0004;
     camera.updateMatrixWorld();
     this.projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -338,7 +334,7 @@ export class Environment {
       if (tile.mesh.visible)
         tile.order.update(tile.mesh.instanceMatrix, tile.mesh.count, forwardX, forwardZ);
     }
-    this.trees.update(time, this.frustum);
+    this.trees.update(this.frustum);
   }
   dispose() {
     if (this.disposed) return;

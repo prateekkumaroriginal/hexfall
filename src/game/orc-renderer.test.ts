@@ -377,6 +377,9 @@ describe('rigged orc', () => {
     expect(meshes).toHaveLength(MAX_ENEMIES);
     expect(new Set(meshes.map((mesh) => mesh.geometry)).size).toBe(1);
     expect(new Set(meshes.map((mesh) => mesh.skeleton)).size).toBe(MAX_ENEMIES);
+    // The renderer asks for sorting bounds even though CreatureRenderer handles culling itself.
+    // All clones must inherit them, avoiding a full CPU skin of every mesh on its first draw.
+    expect(meshes.every((mesh) => mesh.boundingSphere !== null && !mesh.frustumCulled)).toBe(true);
     expect(scene.getObjectByName('creature-slime:gel')).toBe(slime);
     const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 50);
     camera.position.set(0, 1.6, 9);

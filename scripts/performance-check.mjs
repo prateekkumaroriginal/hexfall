@@ -24,8 +24,8 @@ try {
       () => {},
       { ...parseSettings(null), sound: false },
     );
+    await engine.ready;
     cancelAnimationFrame(engine.frame);
-    await engine.creatures.loadOrc();
     engine.camera.position.set(0, 1.6, 9);
     engine.camera.lookAt(0, 1.6, -10);
     engine.staff.visible = true;
@@ -35,6 +35,13 @@ try {
     const grass = engine.scene.children.filter((o) => o.name.includes('grass'));
     const trees = engine.scene.children.filter((o) => /canop|trunk/.test(o.name));
     const sky = engine.scene.getObjectByName('daylight-sky-and-clouds');
+    const draw = () => {
+      renderer.info.reset();
+      renderer.render(engine.environment.depthScene, engine.camera);
+      renderer.autoClear = false;
+      renderer.render(engine.scene, engine.camera);
+      renderer.autoClear = true;
+    };
     for (const enemies of [0, 24]) {
       engine.sim.enemies.forEach((e, i) =>
         Object.assign(e, {
@@ -57,13 +64,13 @@ try {
         });
         sky.visible = variant !== 'no sky';
         for (let i = 0; i < 3; i++) {
-          renderer.render(engine.scene, engine.camera);
+          draw();
           gl.finish();
         }
         const times = [];
         for (let i = 0; i < 12; i++) {
           const start = performance.now();
-          renderer.render(engine.scene, engine.camera);
+          draw();
           gl.finish();
           times.push(performance.now() - start);
         }

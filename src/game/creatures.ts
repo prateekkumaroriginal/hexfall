@@ -71,6 +71,7 @@ export class CreatureRenderer {
       MAX_ENEMIES * SLIME_ANIMATION.BIRTH_BUBBLES_PER_ENEMY,
     );
     this.spawnBubbles.name = 'slime-spawn-bubbles';
+    this.spawnBubbles.renderOrder = -50;
     this.spawnBubbles.count = 0;
     this.spawnBubbles.frustumCulled = false;
     this.spawnBubbles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -106,8 +107,11 @@ export class CreatureRenderer {
       for (const g of geometries) g.dispose();
       const mesh = new THREE.InstancedMesh(merged, material[surface], MAX_ENEMIES);
       mesh.name = `creature-${key}`;
+      mesh.renderOrder = -50;
       mesh.count = 0;
       mesh.frustumCulled = false;
+      // First-spawn tinting needs this shader variant. Allocate it before engine preparation.
+      mesh.setColorAt(0, new THREE.Color());
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       scene.add(mesh);
       this.parts.push({ bone, mesh });
@@ -119,6 +123,9 @@ export class CreatureRenderer {
   }
   loadOrc() {
     return (this.orcLoading ??= this.replaceOrc());
+  }
+  async prepare(renderer: THREE.WebGLRenderer, camera: THREE.Camera) {
+    await this.riggedOrcs?.prepare(renderer, camera);
   }
   private async replaceOrc() {
     const imported = new OrcRenderer(this.scene, await loadOrcAsset());

@@ -51,7 +51,7 @@ export default function App() {
   const [photo, setPhoto] = useState<PhotoSnapshot | null>(null);
   const resumeButton = useRef<HTMLButtonElement>(null);
   const [settings, setSettings] = useState(loadSettings);
-  const initialSettings = useRef(settings);
+  const settingsRef = useRef(settings);
   const [panel, setPanel] = useState<'none' | 'settings' | 'guide' | 'status'>('none');
   const [ready, setReady] = useState(false),
     [error, setError] = useState('');
@@ -90,6 +90,9 @@ export default function App() {
   );
   useEffect(() => {
     let cancelled = false;
+    setReady(false);
+    setSnapshot(initial);
+    setPhoto(null);
     const element = required(host.current, 'Missing game canvas host');
     const onError = (event: Event) => {
       engine.current?.exitPhotoMode();
@@ -97,20 +100,33 @@ export default function App() {
     };
     element.addEventListener('engine-error', onError);
     import('./game/engine')
-      .then(({ Engine }) => {
+      .then(async ({ Engine }) => {
         if (cancelled) return;
+        let instance: Engine;
         try {
-          engine.current = new Engine(
+          instance = new Engine(
             element,
             setSnapshot,
             updatePerformance,
-            initialSettings.current,
+            settingsRef.current,
             setPhoto,
           );
-          setReady(true);
+          engine.current = instance;
         } catch {
           setError(
             'The arena could not start. This game needs a desktop browser with WebGL 2 and hardware acceleration enabled.',
+          );
+          return;
+        }
+        try {
+          await instance.ready;
+          if (!cancelled) setReady(true);
+        } catch (error) {
+          if (cancelled) return;
+          setError(
+            error instanceof Error
+              ? error.message
+              : 'The arena could not load. Reload the page to try again.',
           );
         }
       })
@@ -126,6 +142,7 @@ export default function App() {
     };
   }, [updatePerformance]);
   useEffect(() => {
+    settingsRef.current = settings;
     engine.current?.updateSettings(settings);
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));

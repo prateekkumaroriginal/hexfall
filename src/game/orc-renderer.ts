@@ -10,6 +10,10 @@ import { prepareOrcSkinMaterial } from './orc-material';
 import type { Enemy } from './simulation';
 import { ORC, PLAYER } from '../config/gameplay';
 import { ORC_ANIMATION } from '../config/rendering';
+import { MAX_ENEMIES } from '../config/runtime';
+import { skipInactivePointLighting, applyPackedMetallicSurfaceMaterial } from './surface-material';
+import { packSurfaceTextures } from './texture-packing';
+import { prepareOrcMorphGeometry, prepareOrcMorphMaterial } from './orc-morph';
 
 export const ORC_MODEL_URL = '/models/orc-rigged.glb';
 export const ORC_MODEL_HEIGHT = 2.9;
@@ -48,25 +52,112 @@ export class OrcRenderer {
     private scene: THREE.Scene,
     private asset: OrcAsset,
   ) {
-    validateOrcRig(asset.scene);
+    const rig = validateOrcRig(asset.scene);
+    // Three.js also requests this sphere for draw sorting, even with its own culling disabled.
+    // Calculate it once before cloning, instead of skinning 70,000 vertices on each first spawn.
+    if (rig.face.boundingSphere === null) {
+      asset.scene.updateMatrixWorld(true);
+      rig.face.computeBoundingSphere();
+    }
+    skipInactivePointLighting(this.eyeMaterial);
+    const packed = new Set<THREE.MeshStandardMaterial>(),
+      replaced = new Set<THREE.Texture>();
     asset.scene.traverse((object) => {
-      if (isSkinnedMesh(object))
-        for (const material of Array.isArray(object.material) ? object.material : [object.material])
+      if (!isMesh(object)) return;
+      object.renderOrder = -50;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        if (isSkinnedMesh(object)) {
           prepareOrcSkinMaterial(material);
+          if (
+            object.geometry.morphTargetsRelative &&
+            (prepareOrcMorphGeometry(object.geometry) ||
+              object.geometry.hasAttribute('orcMorphActive'))
+          )
+            prepareOrcMorphMaterial(material);
+          if (
+            material instanceof THREE.MeshStandardMaterial &&
+            !packed.has(material) &&
+            !material.transparent &&
+            material.alphaTest === 0 &&
+            !material.alphaHash &&
+            material.map &&
+            !(material.map instanceof THREE.DataTexture) &&
+            material.normalMap &&
+            material.roughnessMap &&
+            material.roughnessMap === material.metalnessMap &&
+            !material.aoMap
+          ) {
+            const maps = [material.map, material.normalMap, material.roughnessMap];
+            if (
+              maps.every(
+                (map) =>
+                  map.channel === material.map?.channel && map.matrix.equals(material.map.matrix),
+              )
+            ) {
+              const textures = packSurfaceTextures(
+                material.map,
+                material.normalMap,
+                material.roughnessMap,
+                2,
+              );
+              for (const map of maps) replaced.add(map);
+              applyPackedMetallicSurfaceMaterial(material, textures);
+              packed.add(material);
+            }
+          }
+        }
+        skipInactivePointLighting(material);
+      }
     });
+    const used = new Set<THREE.Texture>();
+    asset.scene.traverse((object) => {
+      if (!isMesh(object)) return;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material])
+        for (const value of Object.values(material))
+          if (value instanceof THREE.Texture) used.add(value);
+    });
+    for (const texture of replaced) {
+      if (used.has(texture)) continue;
+      texture.dispose();
+      const image: unknown = texture.source.data;
+      if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap) image.close();
+      texture.source.data = null;
+    }
   }
   beginFrame() {
     for (const orc of this.orcs) if (orc) orc.root.visible = false;
   }
-  update(
-    slot: number,
-    enemy: Enemy,
-    angle: number,
-    phase: number,
-    walking: number,
-    targetDistance = Infinity,
-    time = 0,
-  ) {
+  async prepare(renderer: THREE.WebGLRenderer, camera: THREE.Camera) {
+    // Prepare every pool slot before play so later waves cannot stall on a first rig clone.
+    for (let slot = 0; slot < MAX_ENEMIES; slot++) this.create(slot).root.removeFromParent();
+    const textures = new Set<THREE.Texture>();
+    this.asset.scene.traverse((object) => {
+      if (!isMesh(object)) return;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        for (const value of Object.values(material)) {
+          if (value instanceof THREE.Texture) textures.add(value);
+        }
+      }
+    });
+    for (const texture of textures) renderer.initTexture(texture);
+    const root = new THREE.Group();
+    root.add(this.asset.scene, new THREE.Mesh(this.eyeGeometry, this.eyeMaterial));
+    let viewport: THREE.Vector4 | undefined;
+    try {
+      await renderer.compileAsync(root, camera, this.scene);
+      viewport = renderer.getViewport(new THREE.Vector4());
+      // Upload shared vertex/morph buffers and skinning data before the first enemy spawns.
+      // The canvas is still hidden; a tiny viewport avoids spending time shading this warmup.
+      this.scene.add(root);
+      renderer.setViewport(0, 0, 1, 1);
+      renderer.render(this.scene, camera);
+    } finally {
+      if (viewport) renderer.setViewport(viewport);
+      root.removeFromParent();
+      this.asset.scene.removeFromParent();
+    }
+  }
+  private create(slot: number) {
     let orc = this.orcs[slot];
     if (!orc) {
       const root = clone(this.asset.scene);
@@ -74,6 +165,7 @@ export class OrcRenderer {
       const rig = validateOrcRig(root);
       root.name = `orc-${slot}`;
       root.traverse((object) => {
+        if (isMesh(object)) object.renderOrder = -50;
         if (isSkinnedMesh(object)) {
           object.name = `creature-orc-${slot}`;
           object.frustumCulled = false;
@@ -96,8 +188,22 @@ export class OrcRenderer {
         brow: rig.expressions.BrowTense,
       };
       this.orcs[slot] = orc;
+      root.visible = false;
       this.scene.add(root);
     }
+    return orc;
+  }
+  update(
+    slot: number,
+    enemy: Enemy,
+    angle: number,
+    phase: number,
+    walking: number,
+    targetDistance = Infinity,
+    time = 0,
+  ) {
+    const orc = this.create(slot);
+    if (orc.root.parent !== this.scene) this.scene.add(orc.root);
     orc.root.visible = true;
     orc.root.position.set(enemy.x, 0, enemy.z);
     orc.root.rotation.set(0, angle, 0);

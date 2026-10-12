@@ -12,14 +12,17 @@ import { Environment } from './environment';
 import { buildStaff } from './staff';
 import { renderPixelRatio } from './performance';
 import { FrameDiagnostics } from './diagnostics';
+import { FrameSchedule } from './frame-schedule';
 import { verticalFieldOfView } from './camera';
 import type { Settings } from '../settings';
 import { PhotoSession } from './photo-session';
 import { PointerLockController } from './pointer-lock';
 import { capturePhotoFrame, downloadPhoto } from './photo-capture';
 import type { PhotoControls, PhotoModeActions, PhotoSnapshot } from './photo-mode';
+import { skipInactivePointLighting } from './surface-material';
 
 export class Engine implements PhotoModeActions {
+  readonly ready: Promise<void>;
   readonly sim = new Simulation();
   readonly input = blankInput();
   private renderer: THREE.WebGLRenderer;
@@ -34,6 +37,7 @@ export class Engine implements PhotoModeActions {
   private resizeObserver: ResizeObserver;
   private frame = 0;
   private last = 0;
+  private frameSchedule = new FrameSchedule(RUNTIME.FRAME_SCHEDULING_TOLERANCE_MILLISECONDS);
   private accumulator = 0;
   private hudTime = 0;
   private previewTime = 0;
@@ -56,6 +60,8 @@ export class Engine implements PhotoModeActions {
   private lastShot = 0;
   private settings: Settings;
   private disposed = false;
+  private initialized = false;
+  private compiling?: Promise<unknown>;
   private fpsFrames = 0;
   private fpsTime = 0;
   private diagnostics = new FrameDiagnostics();
@@ -83,7 +89,9 @@ export class Engine implements PhotoModeActions {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.2;
+    this.renderer.info.autoReset = false;
     host.appendChild(this.renderer.domElement);
+    this.renderer.domElement.style.visibility = 'hidden';
     this.renderer.domElement.setAttribute(
       'aria-label',
       'First-person view of a grassy mountain clearing',
@@ -109,7 +117,6 @@ export class Engine implements PhotoModeActions {
     sun.position.set(-18, 30, -15);
     this.scene.add(sun);
     this.environment = new Environment(this.scene);
-    this.environment.bakeSky(this.renderer);
     this.environment.setQuality(settings.quality);
     this.projectiles = this.instances(
       new THREE.SphereGeometry(0.1, 10, 8),
@@ -129,16 +136,6 @@ export class Engine implements PhotoModeActions {
     this.projectiles.name = 'wizard-projectiles';
     this.trails.name = 'spell-trails';
     this.creatures = new CreatureRenderer(this.scene);
-    void this.creatures.loadOrc().catch((error: unknown) => {
-      if (this.disposed) return;
-      console.error('orc could not load.', error);
-      this.pause();
-      this.host.dispatchEvent(
-        new CustomEvent('engine-error', {
-          detail: 'The orc model could not load. Reload the page to try again.',
-        }),
-      );
-    });
     this.scene.add(this.camera);
     const faceFill = new THREE.PointLight('#d9e5dc', 3, 6, 2);
     faceFill.position.set(0, 0.55, -0.2);
@@ -146,6 +143,9 @@ export class Engine implements PhotoModeActions {
     this.camera.add(this.staffView);
     this.staffView.add(this.staff);
     this.crystal = buildStaff(this.staff);
+    this.staff.traverse((object) => {
+      if (isMesh(object)) object.renderOrder = -100;
+    });
     const signal = this.abort.signal;
     document.addEventListener('pointerlockchange', this.lockChange, { signal });
     document.addEventListener('mousemove', this.mouseMove, { signal });
@@ -160,6 +160,51 @@ export class Engine implements PhotoModeActions {
     this.resizeObserver = new ResizeObserver(this.resize);
     this.resizeObserver.observe(host);
     this.resize();
+    this.ready = this.initialize();
+    void this.ready.catch((error: unknown) => {
+      if (this.disposed) return;
+      console.error('Arena could not load.', error);
+      this.host.dispatchEvent(
+        new CustomEvent('engine-error', {
+          detail:
+            error instanceof Error
+              ? error.message
+              : 'The arena could not load. Reload the page to try again.',
+        }),
+      );
+    });
+  }
+  private async initialize() {
+    await Promise.all([
+      this.environment.ready,
+      this.creatures.loadOrc().catch((error: unknown) => {
+        throw new Error('The orc model could not load. Reload the page to try again.', {
+          cause: error,
+        });
+      }),
+    ]);
+    if (this.disposed) return;
+    this.environment.prepareTextures(this.renderer);
+    this.environment.bakeSky(this.renderer);
+    this.camera.position.set(3, 3.5, 14);
+    this.camera.lookAt(-3, 2, -7);
+    this.environment.update(0, this.camera);
+    this.scene.traverse((object) => {
+      if (!isMesh(object)) return;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material])
+        skipInactivePointLighting(material);
+    });
+    this.compiling = Promise.all([
+      this.renderer.compileAsync(this.scene, this.camera),
+      this.renderer.compileAsync(this.environment.depthScene, this.camera),
+      this.creatures.prepare(this.renderer, this.camera),
+    ]);
+    await this.compiling;
+    if (this.disposed) return;
+    this.staff.visible = false;
+    this.renderScene(this.camera);
+    this.renderer.domElement.style.visibility = '';
+    this.initialized = true;
     this.frame = requestAnimationFrame(this.tick);
   }
   private instances(g: THREE.BufferGeometry, m: THREE.Material, count: number) {
@@ -289,6 +334,7 @@ export class Engine implements PhotoModeActions {
     await this.photo?.capture();
   }
   async start() {
+    if (!this.initialized) await this.ready;
     if (this.disposed) return;
     this.exitPhotoMode();
     try {
@@ -431,7 +477,8 @@ export class Engine implements PhotoModeActions {
       this.sim.phase === 'playing' || this.photo
         ? RUNTIME.GAMEPLAY_RENDER_HZ
         : RUNTIME.MENU_RENDER_HZ;
-    if (now - this.last < 1000 / renderHz - RUNTIME.FRAME_SCHEDULING_TOLERANCE_MILLISECONDS) return;
+    if (this.last === 0) this.frameSchedule.reset();
+    if (!this.frameSchedule.due(now, renderHz)) return;
     const elapsed = (now - (this.last || now)) / 1000;
     const dt = Math.min(elapsed, RUNTIME.MAXIMUM_FRAME_DELTA_SECONDS);
     this.last = now;
@@ -520,7 +567,15 @@ export class Engine implements PhotoModeActions {
   private renderScene(camera: THREE.PerspectiveCamera) {
     this.environment.update(this.sim.phase === 'ready' ? this.previewTime : this.sim.time, camera);
     this.syncMeshes(camera);
-    this.renderer.render(this.scene, camera);
+    this.renderer.info.reset();
+    this.renderer.render(this.environment.depthScene, camera);
+    const autoClear = this.renderer.autoClear;
+    this.renderer.autoClear = false;
+    try {
+      this.renderer.render(this.scene, camera);
+    } finally {
+      this.renderer.autoClear = autoClear;
+    }
   }
   private syncMeshes(camera: THREE.Camera = this.camera) {
     this.creatures.update(this.sim.enemies, this.sim.time, this.sim.x, this.sim.z, camera);
@@ -543,14 +598,25 @@ export class Engine implements PhotoModeActions {
     this.trails.instanceMatrix.needsUpdate = true;
   }
   dispose() {
+    if (this.disposed) return;
     this.exitPhotoMode();
     this.disposed = true;
     this.pointerLock.dispose();
-    this.creatures.dispose();
     cancelAnimationFrame(this.frame);
     this.abort.abort();
     this.resizeObserver.disconnect();
     void this.audio?.close().catch(() => {});
+    this.renderer.domElement.remove();
+    // compileAsync polls live programs. Keep them until its polling has finished.
+    if (this.compiling) {
+      void this.compiling.then(
+        () => this.disposeGraphics(),
+        () => this.disposeGraphics(),
+      );
+    } else this.disposeGraphics();
+  }
+  private disposeGraphics() {
+    this.creatures.dispose();
     const geometries = new Set<THREE.BufferGeometry>(),
       materials = new Set<THREE.Material>();
     this.scene.traverse((object) => {
@@ -565,6 +631,5 @@ export class Engine implements PhotoModeActions {
     for (const m of materials) m.dispose();
     this.environment.dispose();
     this.renderer.dispose();
-    this.renderer.domElement.remove();
   }
 }

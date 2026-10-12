@@ -22,6 +22,7 @@ try {
       () => {},
       { ...parseSettings(null), sound: false },
     );
+    await window.engine.ready;
     cancelAnimationFrame(window.engine.frame);
   });
   for (const [name, x, z] of [
@@ -36,7 +37,11 @@ try {
         e.camera.position.set(0, 1.6, 0);
         e.camera.lookAt(x, 3, z);
         e.environment.update(1, e.camera);
+        e.renderer.info.reset();
+        e.renderer.render(e.environment.depthScene, e.camera);
+        e.renderer.autoClear = false;
         e.renderer.render(e.scene, e.camera);
+        e.renderer.autoClear = true;
       },
       { x, z },
     );

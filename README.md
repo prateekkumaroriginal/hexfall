@@ -70,4 +70,6 @@ pnpm preview # Serve the production build locally
 
 To change the balance, start with [`src/config/gameplay.ts`](src/config/gameplay.ts). Arena layout, rendering presets, and settings defaults live alongside it in [`src/config/`](src/config/).
 
+Run `pnpm test:browser:loading` to check delayed texture downloads, repeated page loads, asset failures, and the first complete frame at High quality. It builds the app and starts a temporary production preview, using Edge on Windows and Playwright Chromium elsewhere. To check a running server instead, set `LOADING_TEST_URL` before running `node scripts/loading-check.mjs`.
+
 For creature models and Blender export instructions, see [creature art inspection](docs/creature-art.md). With the dev server running, open `/creature-studio.html` to inspect the models from different angles or in wireframe.

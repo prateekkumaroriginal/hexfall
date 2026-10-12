@@ -1,12 +1,17 @@
 import { required, at } from '../lib/assert';
 import * as THREE from 'three';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TreeRenderer } from './trees';
-import { BOULDERS, ENVIRONMENT_SEED } from '../config/world';
+import { ENVIRONMENT_SEED } from '../config/world';
 import { GRASS, QUALITY_PRESETS } from '../config/rendering';
 import type { Quality } from './performance';
 import { buildMountains } from './mountains';
-import { createMountainMaterial, loadMountainRockTextures } from './mountain-material';
+import { loadMountainRockTextures } from './mountain-material';
+import { loadTreeTextures } from './tree-material';
+import { buildRocks } from './rocks';
+import { isMesh } from './three-types';
+import { packSurfaceTextures } from './texture-packing';
+import { usePackedSurfaceMaterial } from './surface-material';
+import { GrassOrder } from './grass-order';
 function randomSource(seed: number) {
   return () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
@@ -64,10 +69,13 @@ function paintTexture(kind: 'grass' | 'ground', random: () => number) {
   return texture;
 }
 export class Environment {
+  readonly ready: Promise<void>;
+  readonly depthScene = new THREE.Scene();
   private grassTiles: {
     mesh: THREE.InstancedMesh;
     x: number;
     z: number;
+    order: GrassOrder;
   }[] = [];
   private qualityScale: number = GRASS.INITIAL_DENSITY_SCALE;
   private grassRadius: number = GRASS.INITIAL_RADIUS_UNITS;
@@ -79,10 +87,18 @@ export class Environment {
   private skyTarget?: THREE.WebGLCubeRenderTarget;
   private wind = { value: 0 };
   private skyTime = { value: 0 };
+  private disposed = false;
   constructor(scene: THREE.Scene) {
+    const loading = new THREE.LoadingManager();
+    this.ready = new Promise<void>((resolve, reject) => {
+      loading.onLoad = resolve;
+      loading.onError = (url) => {
+        reject(new Error('The arena textures could not load. Reload the page to try again.'));
+        console.error(`Arena texture failed: ${url}`);
+      };
+    });
     const random = randomSource(ENVIRONMENT_SEED),
-      dummy = new THREE.Object3D(),
-      color = new THREE.Color();
+      dummy = new THREE.Object3D();
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(420, 32, 20),
       new THREE.ShaderMaterial({
@@ -143,7 +159,7 @@ export class Environment {
     const groundMap = paintTexture('ground', random),
       grassMap = paintTexture('grass', random);
     this.textures.push(groundMap, grassMap);
-    const mountainRock = loadMountainRockTextures();
+    const mountainRock = loadMountainRockTextures(loading);
     this.textures.push(mountainRock.color, mountainRock.normal, mountainRock.surface);
     groundMap.repeat.set(20, 24);
     const ground = new THREE.Mesh(
@@ -152,6 +168,7 @@ export class Environment {
     );
     ground.position.y = -0.06;
     ground.name = 'valley-floor';
+    ground.renderOrder = 1;
     scene.add(ground);
     // A clump contains many painted blades on three crossed cards, six triangles total.
     const blade = new THREE.BufferGeometry(),
@@ -217,59 +234,53 @@ export class Environment {
         mesh.computeBoundingSphere();
         if (mesh.boundingSphere) mesh.boundingSphere.radius += 0.2;
         scene.add(mesh);
-        this.grassTiles.push({ mesh, x: cx, z: cz });
+        this.grassTiles.push({ mesh, x: cx, z: cz, order: new GrassOrder(mesh.instanceMatrix) });
       }
-    this.trees = new TreeRenderer(scene);
-    const rockGeo = new THREE.IcosahedronGeometry(1, 3);
-    const rp = rockGeo.getAttribute('position'),
-      rc = [];
-    for (let i = 0; i < rp.count; i++) {
-      const x = rp.getX(i),
-        y = rp.getY(i),
-        z = rp.getZ(i);
-      const warp = 1 + Math.sin(x * 7 + z * 4) * 0.12 + Math.cos(y * 9 - z * 3) * 0.09;
-      rp.setXYZ(
-        i,
-        x * warp + Math.max(0, y) * 0.18,
-        Math.max(-0.62, y * warp * 0.75),
-        z * warp * 0.85,
+    const treeTextures = loadTreeTextures(loading);
+    this.textures.push(
+      treeTextures.barkColor,
+      treeTextures.barkNormal,
+      treeTextures.barkSurface,
+      treeTextures.leavesColor,
+      treeTextures.leavesNormal,
+    );
+    this.trees = new TreeRenderer(scene, treeTextures);
+    const rocks = buildRocks(scene, mountainRock);
+    const mountains = buildMountains(scene, mountainRock);
+    // Resolve overlapping rock surfaces before their expensive texture and lighting passes.
+    // Geometry and transforms are shared; visible detail stays identical.
+    for (const rock of [rocks, mountains]) {
+      const material = new THREE.MeshBasicMaterial({
+        colorWrite: false,
+        side: rock.material.side,
+        toneMapped: false,
+      });
+      const depth = new THREE.Mesh(rock.geometry, material);
+      depth.name = `${rock.name}-depth`;
+      depth.matrixAutoUpdate = false;
+      depth.matrix.copy(rock.matrix);
+      this.depthScene.add(depth);
+    }
+    this.ready = this.ready.then(() => {
+      if (this.disposed) return;
+      const sources = [mountainRock.color, mountainRock.normal, mountainRock.surface];
+      const packed = packSurfaceTextures(
+        mountainRock.color,
+        mountainRock.normal,
+        mountainRock.surface,
       );
-      color.set(y < -0.15 ? '#777b67' : '#b4afa1');
-      color.multiplyScalar(0.9 + 0.1 * Math.sin(x * 14 + y * 11 + z * 8));
-      rc.push(color.r, color.g, color.b);
-    }
-    rockGeo.setAttribute('color', new THREE.Float32BufferAttribute(rc, 3));
-    rockGeo.deleteAttribute('uv');
-    rockGeo.deleteAttribute('normal');
-    const smoothRock = mergeVertices(rockGeo);
-    rockGeo.dispose();
-    smoothRock.computeVertexNormals();
-    const rockMat = createMountainMaterial(mountainRock);
-    const rocks = new THREE.InstancedMesh(smoothRock, rockMat, 46);
-    rocks.name = 'valley-boulders';
-    let rockCount = 0;
-    for (const p of BOULDERS.LAYOUT) {
-      dummy.position.set(p.X, 0.72, p.Z);
-      dummy.rotation.set(0, rockCount * 0.7, 0);
-      dummy.scale.set(p.RADIUS, 1.3, p.RADIUS);
-      dummy.updateMatrix();
-      rocks.setMatrixAt(rockCount++, dummy.matrix);
-    }
-    while (rockCount < 46) {
-      const side = rockCount % 4,
-        along = random() * 2 - 1;
-      const x = side < 2 ? (side === 0 ? -1 : 1) * (16 + random() * 2) : along * 16,
-        z = side >= 2 ? (side === 2 ? -1 : 1) * (20 + random() * 2) : along * 20;
-      const size = 0.4 + random() * 1.1;
-      dummy.position.set(x, size * 0.35, z);
-      dummy.rotation.set(random(), random() * 6.28, 0);
-      dummy.scale.set(size, size * 0.7, size * 0.8);
-      dummy.updateMatrix();
-      rocks.setMatrixAt(rockCount++, dummy.matrix);
-    }
-    rocks.computeBoundingSphere();
-    scene.add(rocks);
-    buildMountains(scene, mountainRock);
+      mountainRock.packed = packed;
+      usePackedSurfaceMaterial(rocks.material, packed);
+      this.textures.splice(2, 3, packed.color, packed.normal);
+      for (const source of sources) {
+        source.dispose();
+        source.source.data = null;
+      }
+    });
+  }
+  prepareTextures(renderer: THREE.WebGLRenderer) {
+    // WebGL texture storage is immutable. Allocate only after final image sizes are known.
+    for (const texture of this.textures) renderer.initTexture(texture);
   }
   bakeSky(renderer: THREE.WebGLRenderer) {
     const parent = required(this.sky.parent, 'Sky must be attached before baking'),
@@ -312,6 +323,8 @@ export class Environment {
     camera.updateMatrixWorld();
     this.projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projection);
+    const forwardX = -at(camera.matrixWorld.elements, 8),
+      forwardZ = -at(camera.matrixWorld.elements, 10);
     for (const tile of this.grassTiles) {
       const d = Math.hypot(tile.x - camera.position.x, tile.z - camera.position.z);
       tile.mesh.visible = d < this.grassRadius + GRASS.VISIBILITY_PADDING_UNITS;
@@ -322,10 +335,20 @@ export class Environment {
             ? GRASS.MIDDLE_DENSITY
             : GRASS.FAR_DENSITY;
       tile.mesh.count = Math.floor(GRASS.PER_TILE * this.qualityScale * density);
+      if (tile.mesh.visible)
+        tile.order.update(tile.mesh.instanceMatrix, tile.mesh.count, forwardX, forwardZ);
     }
     this.trees.update(time, this.frustum);
   }
   dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    for (const object of this.depthScene.children) {
+      if (isMesh(object)) {
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        for (const material of materials) material.dispose();
+      }
+    }
     this.skyTarget?.dispose();
     for (const texture of this.textures) texture.dispose();
   }

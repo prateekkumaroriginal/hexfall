@@ -1,0 +1,7 @@
+STWillow2, Stylized Trees Pack
+Author: Elijah Cobden
+Source: https://elijahcobden.itch.io/stylized-trees-pack
+License: Creative Commons Attribution 4.0 International
+https://creativecommons.org/licenses/by/4.0/
+The converted GLB and original source files are reserved for future levels.
+Conversion changes and attribution are recorded in README.md.

@@ -1,0 +1,20 @@
+{
+  "id": "fantasy-willow",
+  "status": "reserved-for-future-levels",
+  "active_in_current_game": false,
+  "file": "tree.glb",
+  "author": "Elijah Cobden",
+  "source_model": "STWillow2",
+  "source": "https://elijahcobden.itch.io/stylized-trees-pack",
+  "license": "CC-BY-4.0",
+  "triangles": 3552,
+  "bytes": 906472,
+  "glb_sha256": "a2beb19896a6d46241419cf5db6619d65ee112b1c97d6d90a0329077d27b45fd",
+  "source_sha256": {
+    "STWillow2.fbx": "cf0fe58be9fc5228b2bafb07973b633976e8466272511feb0154429beee4ac93",
+    "STWillowLeaf.mat": "66341f0e6e6667bfe713bdec86e0ebd17c50fd7d68d53b011ccadec45d91ca55",
+    "STWillowLeafTexture.png": "809d21f0946b053fb096221a14ba0cf656c461a5b36229e6185c6723599286f4",
+    "STWillowTrunkTexture.png": "8e56ec902e87aaef89040d48094931fd5cc59ee22afc6bbc4cb401d10921d420"
+  },
+  "changes": "FBX converted to GLB; source alpha/bark maps resized to 1024; Unity leaf shader colors baked into vertex colors; ground pivot normalized; wind animation omitted."
+}
